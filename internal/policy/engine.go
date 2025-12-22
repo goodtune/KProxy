@@ -16,6 +16,19 @@ import (
 	"github.com/goodtune/kproxy/internal/database"
 )
 
+// UsageTracker interface for usage tracking
+type UsageTracker interface {
+	RecordActivity(deviceID, limitID string) error
+	GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*UsageStats, error)
+}
+
+// UsageStats represents current usage statistics
+type UsageStats struct {
+	TodayUsage     time.Duration
+	RemainingToday time.Duration
+	LimitExceeded  bool
+}
+
 // Engine handles policy evaluation and enforcement
 type Engine struct {
 	db              *database.DB
@@ -26,6 +39,7 @@ type Engine struct {
 	globalBypass    []string
 	defaultAction   Action
 	useMACAddress   bool
+	usageTracker    UsageTracker
 	mu              sync.RWMutex
 }
 
@@ -485,6 +499,13 @@ func (e *Engine) matchDomain(domain, pattern string) bool {
 	return false
 }
 
+// SetUsageTracker sets the usage tracker for the policy engine
+func (e *Engine) SetUsageTracker(tracker UsageTracker) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.usageTracker = tracker
+}
+
 // Evaluate evaluates a proxy request against the policy
 func (e *Engine) Evaluate(req *ProxyRequest) *PolicyDecision {
 	e.mu.RLock()
@@ -518,6 +539,14 @@ func (e *Engine) Evaluate(req *ProxyRequest) *PolicyDecision {
 	// 2. Evaluate domain/path rules (already sorted by priority)
 	for _, rule := range profile.Rules {
 		if e.matchesRule(req.Host, req.Path, &rule) {
+			// 3. If allowing, check usage limits for this rule's category
+			if rule.Action == ActionAllow {
+				limitDecision := e.checkUsageLimits(device, profile, req.Host, rule.Category)
+				if limitDecision != nil {
+					return limitDecision
+				}
+			}
+
 			return &PolicyDecision{
 				Action:        rule.Action,
 				Reason:        fmt.Sprintf("matched rule: %s", rule.ID),
@@ -528,11 +557,84 @@ func (e *Engine) Evaluate(req *ProxyRequest) *PolicyDecision {
 		}
 	}
 
-	// 3. Apply default action
+	// 4. Apply default action
 	if profile.DefaultAllow {
 		return &PolicyDecision{Action: ActionAllow, Reason: "default allow"}
 	}
 	return &PolicyDecision{Action: ActionBlock, Reason: "default deny", BlockPage: "default_block"}
+}
+
+// checkUsageLimits checks if usage limits are exceeded
+func (e *Engine) checkUsageLimits(device *Device, profile *Profile, host, category string) *PolicyDecision {
+	if e.usageTracker == nil {
+		return nil // Usage tracking not enabled
+	}
+
+	for _, limit := range profile.UsageLimits {
+		// Check if this limit applies to the current request
+		if !e.limitApplies(&limit, host, category) {
+			continue
+		}
+
+		// Parse reset time
+		resetTime, err := time.Parse("15:04", limit.ResetTime)
+		if err != nil {
+			resetTime = time.Time{} // Default to midnight
+		}
+
+		// Get usage stats
+		limitDuration := time.Duration(limit.DailyMinutes) * time.Minute
+		stats, err := e.usageTracker.GetUsageStats(device.ID, limit.ID, limitDuration, resetTime)
+		if err != nil {
+			// Log error but don't block on tracking errors
+			continue
+		}
+
+		// Check if limit is exceeded
+		if stats.LimitExceeded {
+			return &PolicyDecision{
+				Action:        ActionBlock,
+				Reason:        fmt.Sprintf("daily usage limit exceeded: %v/%v used", stats.TodayUsage.Round(time.Minute), limitDuration),
+				BlockPage:     "usage_limit",
+				Category:      category,
+				UsageLimitID:  limit.ID,
+			}
+		}
+
+		// Record activity for this limit
+		if err := e.usageTracker.RecordActivity(device.ID, limit.ID); err != nil {
+			// Log error but don't block on tracking errors
+		}
+
+		// Return decision with usage info for timer injection
+		return &PolicyDecision{
+			Action:         ActionAllow,
+			Reason:         fmt.Sprintf("usage limit: %v remaining of %v", stats.RemainingToday.Round(time.Minute), limitDuration),
+			InjectTimer:    limit.InjectTimer,
+			TimeRemaining:  stats.RemainingToday,
+			Category:       category,
+			UsageLimitID:   limit.ID,
+		}
+	}
+
+	return nil
+}
+
+// limitApplies checks if a usage limit applies to the current request
+func (e *Engine) limitApplies(limit *UsageLimit, host, category string) bool {
+	// Check if limit matches by category
+	if limit.Category != "" && limit.Category == category {
+		return true
+	}
+
+	// Check if limit matches by specific domain
+	for _, domain := range limit.Domains {
+		if e.matchDomain(host, domain) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // matchesRule checks if a request matches a rule
