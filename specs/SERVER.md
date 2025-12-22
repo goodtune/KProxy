@@ -1740,11 +1740,11 @@ github.com/goodtune/kproxy/
 - Styled block page with device and reason information
 - Full database schema including devices, profiles, rules, time_rules, usage_limits, bypass_rules
 
-### Phase 3: Time Rules & Usage Tracking (Week 5-6)
+### Phase 3: Time Rules & Usage Tracking (Week 5-6) ⚠️ PARTIALLY COMPLETE
 
 **Deliverables:**
 
-- [ ] Time-of-access restrictions
+- [x] Time-of-access restrictions
 - [ ] Usage session tracking
 - [ ] Daily usage aggregation
 - [ ] Time limit enforcement
@@ -1752,11 +1752,24 @@ github.com/goodtune/kproxy/
 
 **Testing:**
 
-- Verify time windows work correctly
-- Verify usage accumulates properly
-- Verify daily reset works
+- ✅ Time windows work correctly
+- ⏳ Usage accumulates properly (not implemented)
+- ⏳ Daily reset works (not implemented)
 
-### Phase 4: Response Modification (Week 7)
+**Implementation Status:**
+- ✅ Database schema complete (`time_rules`, `usage_limits`, `daily_usage`, `usage_sessions` tables)
+- ✅ Time-of-access evaluation in policy engine (`isWithinAllowedTime` function)
+- ✅ Time rules block access outside allowed hours
+- ❌ Active usage tracking with inactivity detection (not implemented)
+- ❌ Session management (start/stop/accumulate) (not implemented)
+- ❌ Daily usage aggregation (not implemented)
+- ❌ Time limit enforcement when daily limit exceeded (not implemented)
+- ❌ Daily reset mechanism (not implemented)
+
+**Next Steps:**
+Need to implement `internal/usage/` package with tracker, session management, and limit enforcement
+
+### Phase 4: Response Modification (Week 7) ❌ NOT STARTED
 
 **Deliverables:**
 
@@ -1767,11 +1780,21 @@ github.com/goodtune/kproxy/
 
 **Testing:**
 
-- Overlay appears on time-limited sites
-- Countdown updates in real-time
-- Sites without injection work normally
+- ⏳ Overlay appears on time-limited sites
+- ⏳ Countdown updates in real-time
+- ⏳ Sites without injection work normally
 
-### Phase 5: Admin Interface (Week 8-10)
+**Implementation Status:**
+- ❌ No `internal/modifier/` package exists
+- ❌ HTML response detection not implemented
+- ❌ Timer overlay injection not implemented
+- ❌ SSE endpoint not implemented
+- ❌ Content-Length recalculation not implemented
+
+**Next Steps:**
+Need to implement response buffering, HTML injection, and SSE streaming for real-time countdown
+
+### Phase 5: Admin Interface (Week 8-10) ❌ NOT STARTED
 
 **Deliverables:**
 
@@ -1785,25 +1808,50 @@ github.com/goodtune/kproxy/
 
 **Testing:**
 
-- CRUD operations for all entities
-- Real-time log streaming
-- Report generation
+- ⏳ CRUD operations for all entities
+- ⏳ Real-time log streaming
+- ⏳ Report generation
 
-### Phase 6: Metrics & Observability (Week 11)
+**Implementation Status:**
+- ❌ No `internal/admin/` package exists
+- ❌ Admin API endpoints not implemented
+- ❌ Authentication system not implemented
+- ❌ No frontend (React/Preact) exists
+- ❌ Dashboard not implemented
+- ❌ CRUD operations not implemented
+- ❌ Log viewer not implemented
+- ❌ CA certificate download endpoint not implemented
+
+**Next Steps:**
+Need to implement complete admin backend API and frontend SPA for configuration management
+
+### Phase 6: Metrics & Observability (Week 11) ⚠️ PARTIALLY COMPLETE
 
 **Deliverables:**
 
-- [ ] Prometheus metrics endpoint
+- [x] Prometheus metrics endpoint
 - [ ] All key metrics instrumented
-- [ ] Health check endpoint
+- [x] Health check endpoint
 - [ ] Grafana dashboard template
 
 **Testing:**
 
-- Metrics scraping works
-- Dashboards show meaningful data
+- ✅ Metrics scraping works
+- ⏳ Dashboards show meaningful data (no dashboard template)
 
-### Phase 7: Hardening & Documentation (Week 12)
+**Implementation Status:**
+- ✅ Metrics definitions in `internal/metrics/metrics.go`
+- ✅ Metrics server running on port 9090 (default)
+- ✅ `/metrics` endpoint (Prometheus format)
+- ✅ `/health` endpoint
+- ✅ Metrics registered: DNS queries, HTTP requests, certificates, blocks, usage, connections
+- ❌ Metrics not instrumented (not being incremented in code)
+- ❌ No Grafana dashboard template
+
+**Next Steps:**
+Need to instrument all metrics in DNS server, proxy, CA, and policy engine. Create Grafana dashboard JSON
+
+### Phase 7: Hardening & Documentation (Week 12) ⚠️ PARTIALLY COMPLETE
 
 **Deliverables:**
 
@@ -1811,9 +1859,34 @@ github.com/goodtune/kproxy/
 - [ ] Rate limiting
 - [ ] Security review
 - [ ] Performance optimization
-- [ ] Documentation
-- [ ] Docker image
-- [ ] Systemd service file
+- [x] Documentation
+- [x] Docker image
+- [x] Systemd service file
+
+**Testing:**
+
+- ⏳ Error handling comprehensive
+- ⏳ Rate limiting prevents abuse
+- ⏳ Security review completed
+- ⏳ Performance benchmarks met
+
+**Implementation Status:**
+- ✅ `Makefile` with build, test, lint, docker, install targets
+- ✅ Multi-stage `Dockerfile` with security best practices
+- ✅ Systemd service file with security hardening (NoNewPrivileges, ProtectSystem, CAP_NET_BIND_SERVICE)
+- ✅ `scripts/generate-ca.sh` for CA certificate generation
+- ✅ `README.md` with setup and usage documentation
+- ✅ `configs/config.example.yaml` with comprehensive comments
+- ✅ Sample data and loading scripts
+- ❌ Error handling needs improvement (basic error handling exists)
+- ❌ Rate limiting for admin API not implemented
+- ❌ Security review not conducted
+- ❌ Performance optimization not done
+- ❌ No API documentation
+- ❌ No troubleshooting guide
+
+**Next Steps:**
+Comprehensive error handling, rate limiting for admin endpoints, security audit, performance profiling and optimization
 
 -----
 
