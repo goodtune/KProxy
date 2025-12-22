@@ -21,15 +21,16 @@ import (
 
 // CA manages certificate generation for TLS interception
 type CA struct {
-	rootCert     *x509.Certificate
-	rootKey      *ecdsa.PrivateKey
-	intermCert   *x509.Certificate
-	intermKey    *ecdsa.PrivateKey
-	certCache    *lru.Cache[string, *tls.Certificate]
-	cacheTTL     time.Duration
-	certValidity time.Duration
-	logger       zerolog.Logger
-	mu           sync.RWMutex
+	rootCert      *x509.Certificate
+	rootKey       *ecdsa.PrivateKey
+	intermCert    *x509.Certificate
+	intermKey     *ecdsa.PrivateKey
+	certCache     *lru.Cache[string, *tls.Certificate]
+	cacheCapacity int
+	cacheTTL      time.Duration
+	certValidity  time.Duration
+	logger        zerolog.Logger
+	mu            sync.RWMutex
 }
 
 // Config holds CA configuration
@@ -82,6 +83,7 @@ func NewCA(config Config, logger zerolog.Logger) (*CA, error) {
 		return nil, fmt.Errorf("failed to create certificate cache: %w", err)
 	}
 	ca.certCache = cache
+	ca.cacheCapacity = config.CertCacheSize
 
 	ca.logger.Info().
 		Str("root_subject", rootCert.Subject.CommonName).
@@ -259,5 +261,5 @@ func (ca *CA) ClearCache() {
 func (ca *CA) CacheStats() (size, capacity int) {
 	ca.mu.RLock()
 	defer ca.mu.RUnlock()
-	return ca.certCache.Len(), ca.certCache.Cap()
+	return ca.certCache.Len(), ca.cacheCapacity
 }
