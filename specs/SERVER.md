@@ -1838,14 +1838,15 @@ Need to implement complete admin backend API and frontend SPA for configuration 
 **Deliverables:**
 
 - [x] Prometheus metrics endpoint
-- [ ] All key metrics instrumented
+- [x] All key metrics instrumented
 - [x] Health check endpoint
 - [ ] Grafana dashboard template
 
 **Testing:**
 
 - ✅ Metrics scraping works
-- ⏳ Dashboards show meaningful data (no dashboard template)
+- ✅ All metrics being recorded
+- ⏳ Dashboards show meaningful data (no dashboard template yet)
 
 **Implementation Status:**
 - ✅ Metrics definitions in `internal/metrics/metrics.go`
@@ -1853,11 +1854,24 @@ Need to implement complete admin backend API and frontend SPA for configuration 
 - ✅ `/metrics` endpoint (Prometheus format)
 - ✅ `/health` endpoint
 - ✅ Metrics registered: DNS queries, HTTP requests, certificates, blocks, usage, connections
-- ❌ Metrics not instrumented (not being incremented in code)
-- ❌ No Grafana dashboard template
+- ✅ DNS metrics instrumented in `internal/dns/server.go`:
+  - `kproxy_dns_queries_total` - by device, action, query type
+  - `kproxy_dns_query_duration_seconds` - by action
+  - `kproxy_dns_upstream_errors_total` - by upstream server
+- ✅ Proxy metrics instrumented in `internal/proxy/server.go`:
+  - `kproxy_requests_total` - by device, host, action, method
+  - `kproxy_request_duration_seconds` - by device, action
+  - `kproxy_blocked_requests_total` - by device, reason
+- ✅ CA metrics instrumented in `internal/ca/ca.go`:
+  - `kproxy_certificates_generated_total`
+  - `kproxy_certificate_cache_hits_total`
+  - `kproxy_certificate_cache_misses_total`
+- ✅ Usage metrics instrumented in `internal/usage/tracker.go`:
+  - `kproxy_usage_minutes_consumed_total` - by device, category
+- ❌ No Grafana dashboard template yet
 
 **Next Steps:**
-Need to instrument all metrics in DNS server, proxy, CA, and policy engine. Create Grafana dashboard JSON
+Create Grafana dashboard JSON template for visualization
 
 ### Phase 7: Hardening & Documentation (Week 12) ⚠️ PARTIALLY COMPLETE
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/database"
+	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/rs/zerolog"
 )
@@ -149,10 +150,24 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	// Evaluate policy
 	decision := s.policyEngine.Evaluate(policyReq)
 
-	// Log request
+	// Log request and record metrics
 	defer func() {
 		duration := time.Since(startTime).Milliseconds()
 		s.logRequest(policyReq, decision, http.StatusOK, 0, duration)
+
+		// Record metrics
+		device := s.policyEngine.IdentifyDevice(clientIP, nil)
+		deviceName := "unknown"
+		if device != nil {
+			deviceName = device.Name
+		}
+
+		metrics.RequestsTotal.WithLabelValues(deviceName, policyReq.Host, string(decision.Action), policyReq.Method).Inc()
+		metrics.RequestDuration.WithLabelValues(deviceName, string(decision.Action)).Observe(time.Since(startTime).Seconds())
+
+		if decision.Action == policy.ActionBlock {
+			metrics.BlockedRequests.WithLabelValues(deviceName, decision.Reason).Inc()
+		}
 	}()
 
 	// Handle based on decision
@@ -191,10 +206,24 @@ func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 	// Evaluate policy
 	decision := s.policyEngine.Evaluate(policyReq)
 
-	// Log request
+	// Log request and record metrics
 	defer func() {
 		duration := time.Since(startTime).Milliseconds()
 		s.logRequest(policyReq, decision, http.StatusOK, 0, duration)
+
+		// Record metrics
+		device := s.policyEngine.IdentifyDevice(clientIP, nil)
+		deviceName := "unknown"
+		if device != nil {
+			deviceName = device.Name
+		}
+
+		metrics.RequestsTotal.WithLabelValues(deviceName, policyReq.Host, string(decision.Action), policyReq.Method).Inc()
+		metrics.RequestDuration.WithLabelValues(deviceName, string(decision.Action)).Observe(time.Since(startTime).Seconds())
+
+		if decision.Action == policy.ActionBlock {
+			metrics.BlockedRequests.WithLabelValues(deviceName, decision.Reason).Inc()
+		}
 	}()
 
 	// Handle based on decision

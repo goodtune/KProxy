@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/database"
+	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/rs/zerolog"
 )
 
@@ -306,6 +307,11 @@ func (t *Tracker) aggregateToDailyUsage(session *Session) error {
 	if err != nil {
 		return fmt.Errorf("failed to aggregate daily usage: %w", err)
 	}
+
+	// Record usage minutes metric (get category from limit ID if possible)
+	// For now, use "unknown" category - could be enhanced to query the database for category
+	minutesUsed := float64(session.AccumulatedSeconds) / 60.0
+	metrics.UsageMinutesConsumed.WithLabelValues(session.DeviceID, "session").Add(minutesUsed)
 
 	t.logger.Debug().
 		Str("date", date).

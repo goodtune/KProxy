@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/database"
+	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog"
@@ -220,6 +221,16 @@ func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		if err := s.logDNS(clientIP, domain, dns.TypeToString[qtype], logAction, responseIP, upstream, latency); err != nil {
 			s.logger.Error().Err(err).Msg("Failed to log DNS query")
 		}
+
+		// Record metrics
+		device := s.policyEngine.IdentifyDevice(clientIP, nil)
+		deviceName := "unknown"
+		if device != nil {
+			deviceName = device.Name
+		}
+
+		metrics.DNSQueriesTotal.WithLabelValues(deviceName, logAction, dns.TypeToString[qtype]).Inc()
+		metrics.DNSQueryDuration.WithLabelValues(logAction).Observe(time.Since(startTime).Seconds())
 	}
 
 	// Send response
@@ -277,6 +288,9 @@ func (s *Server) forwardToUpstream(r *dns.Msg) (*dns.Msg, string, error) {
 			Err(err).
 			Str("upstream", upstream).
 			Msg("Upstream DNS query failed, trying next")
+
+		// Record upstream error
+		metrics.DNSUpstreamErrors.WithLabelValues(upstream).Inc()
 	}
 	return nil, "", fmt.Errorf("all upstream DNS servers failed")
 }
