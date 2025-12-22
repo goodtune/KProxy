@@ -1683,46 +1683,62 @@ github.com/goodtune/kproxy/
 
 ## 13. Implementation Phases
 
-### Phase 1: Core Proxy & DNS Server (Week 1-2)
+### Phase 1: Core Proxy & DNS Server (Week 1-2) ✅ COMPLETE
 
 **Deliverables:**
 
-- [ ] Embedded DNS server (intercept mode only initially)
-- [ ] DNS query logging
-- [ ] HTTP proxy that forwards requests
-- [ ] TLS termination with dynamic certificate generation
-- [ ] Basic CA integration (generate certs on-the-fly)
-- [ ] Certificate caching (LRU)
-- [ ] Configuration file loading
-- [ ] Basic logging (stdout)
+- [x] Embedded DNS server (intercept mode only initially)
+- [x] DNS query logging
+- [x] HTTP proxy that forwards requests
+- [x] TLS termination with dynamic certificate generation
+- [x] Basic CA integration (generate certs on-the-fly)
+- [x] Certificate caching (LRU)
+- [x] Configuration file loading
+- [x] Basic logging (stdout)
 
 **Testing:**
 
-- DNS queries return proxy IP for all domains
-- Proxy HTTP requests successfully
-- Proxy HTTPS requests with generated certs
-- Verify certificates are cached
+- ✅ DNS queries return proxy IP for all domains
+- ✅ Proxy HTTP requests successfully
+- ✅ Proxy HTTPS requests with generated certs
+- ✅ Verify certificates are cached
 
-### Phase 2: Policy Engine & DNS Bypass (Week 3-4)
+**Implementation Details:**
+- DNS server implemented in `internal/dns/server.go` with UDP/TCP support
+- TLS certificate authority with dynamic cert generation in `internal/ca/ca.go`
+- HTTP/HTTPS proxy servers in `internal/proxy/server.go`
+- Structured logging with zerolog
+- YAML configuration with environment variable overrides
+
+### Phase 2: Policy Engine & DNS Bypass (Week 3-4) ✅ COMPLETE
 
 **Deliverables:**
 
-- [ ] Device identification (IP-based)
-- [ ] Profile/rule data model
-- [ ] Domain matching with wildcards
-- [ ] DNS bypass rules (forward to upstream, return real IP)
-- [ ] Path-based filtering for HTTP
-- [ ] Allow/block decisions
-- [ ] SQLite database integration
-- [ ] Block page rendering
+- [x] Device identification (IP-based)
+- [x] Profile/rule data model
+- [x] Domain matching with wildcards
+- [x] DNS bypass rules (forward to upstream, return real IP)
+- [x] Path-based filtering for HTTP
+- [x] Allow/block decisions
+- [x] SQLite database integration
+- [x] Block page rendering
 
 **Testing:**
 
-- Bypass domains resolve to real IPs
-- Intercepted domains resolve to proxy IP
-- Block specific domains
-- Allow specific paths on blocked domains
-- Different rules per device
+- ✅ Bypass domains resolve to real IPs
+- ✅ Intercepted domains resolve to proxy IP
+- ✅ Block specific domains
+- ✅ Allow specific paths on blocked domains
+- ✅ Different rules per device
+
+**Implementation Details:**
+- Policy engine with device/profile/rule management in `internal/policy/engine.go`
+- Complete SQLite schema with migrations in `internal/database/db.go`
+- DNS bypass logic with global and per-device bypass rules
+- Domain matching with wildcard and glob pattern support
+- Path-based filtering with prefix and glob matching
+- Styled block page with device and reason information
+- Full database schema including devices, profiles, rules, time_rules, usage_limits, bypass_rules
 
 ### Phase 3: Time Rules & Usage Tracking (Week 5-6)
 
