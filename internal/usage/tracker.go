@@ -10,6 +10,7 @@ import (
 
 	"github.com/goodtune/kproxy/internal/database"
 	"github.com/goodtune/kproxy/internal/metrics"
+	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/rs/zerolog"
 )
 
@@ -181,13 +182,13 @@ func (t *Tracker) GetTodayUsage(deviceID, limitID string, resetTime time.Time) (
 }
 
 // GetUsageStats returns current usage statistics for a device and limit
-func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*UsageStats, error) {
+func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*policy.UsageStats, error) {
 	todayUsage, err := t.GetTodayUsage(deviceID, limitID, resetTime)
 	if err != nil {
 		return nil, err
 	}
 
-	stats := &UsageStats{
+	stats := &policy.UsageStats{
 		TodayUsage:     todayUsage,
 		RemainingToday: dailyLimit - todayUsage,
 		LimitExceeded:  todayUsage >= dailyLimit,
@@ -196,16 +197,6 @@ func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Durati
 	if stats.RemainingToday < 0 {
 		stats.RemainingToday = 0
 	}
-
-	// Get active session if exists
-	t.mu.RLock()
-	key := deviceID + ":" + limitID
-	if sessionID, exists := t.deviceLimitSessions[key]; exists {
-		if session := t.sessions[sessionID]; session != nil && session.Active {
-			stats.ActiveSession = session
-		}
-	}
-	t.mu.RUnlock()
 
 	return stats, nil
 }
