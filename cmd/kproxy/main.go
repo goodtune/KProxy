@@ -15,6 +15,7 @@ import (
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/proxy"
+	"github.com/goodtune/kproxy/internal/usage"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -94,6 +95,34 @@ func main() {
 
 	logger.Info().Msg("Policy Engine initialized")
 
+	// Initialize Usage Tracker
+	usageTracker := usage.NewTracker(
+		db,
+		usage.Config{
+			InactivityTimeout:  parseDuration(cfg.Usage.InactivityTimeout, 2*time.Minute),
+			MinSessionDuration: parseDuration(cfg.Usage.MinSessionDuration, 10*time.Second),
+		},
+		logger,
+	)
+
+	logger.Info().Msg("Usage Tracker initialized")
+
+	// Connect usage tracker to policy engine
+	policyEngine.SetUsageTracker(usageTracker)
+
+	// Initialize Reset Scheduler
+	resetScheduler, err := usage.NewResetScheduler(
+		db,
+		cfg.Usage.DailyResetTime,
+		logger,
+	)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize Reset Scheduler")
+	}
+
+	resetScheduler.Start()
+	logger.Info().Msg("Reset Scheduler initialized")
+
 	// Initialize DNS Server
 	dnsConfig := dns.Config{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.DNSPort),
@@ -172,6 +201,8 @@ func main() {
 	logger.Info().Msg("Shutdown signal received, gracefully stopping...")
 
 	// Stop servers
+	resetScheduler.Stop()
+
 	if err := dnsServer.Stop(); err != nil {
 		logger.Error().Err(err).Msg("Error stopping DNS Server")
 	}

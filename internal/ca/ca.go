@@ -15,6 +15,7 @@ import (
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/rs/zerolog"
 )
 
@@ -105,16 +106,22 @@ func (ca *CA) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, erro
 	if cert, ok := ca.certCache.Get(hostname); ok {
 		ca.mu.RUnlock()
 		ca.logger.Debug().Str("hostname", hostname).Msg("Certificate cache hit")
+		metrics.CertificateCacheHits.Inc()
 		return cert, nil
 	}
 	ca.mu.RUnlock()
 
-	// Generate new certificate
+	// Cache miss - generate new certificate
+	metrics.CertificateCacheMisses.Inc()
+
 	ca.logger.Info().Str("hostname", hostname).Msg("Generating new certificate")
 	cert, err := ca.generateCertificate(hostname)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate certificate for %s: %w", hostname, err)
 	}
+
+	// Record certificate generation
+	metrics.CertificatesGenerated.Inc()
 
 	// Cache certificate
 	ca.mu.Lock()
