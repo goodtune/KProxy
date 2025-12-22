@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean docker run generate-ca install help
+.PHONY: all build test lint clean docker run generate-ca install tidy help
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
@@ -7,13 +7,13 @@ BINARY := kproxy
 all: build
 
 ## build: Build the kproxy binary
-build:
+build: tidy
 	@echo "Building kproxy $(VERSION)..."
 	@CGO_ENABLED=1 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/kproxy
 	@echo "Built bin/$(BINARY)"
 
 ## test: Run tests
-test:
+test: tidy
 	@echo "Running tests..."
 	@go test -v -race -cover ./...
 
@@ -40,7 +40,7 @@ docker:
 	@echo "Built kproxy:$(VERSION) and kproxy:latest"
 
 ## run: Run kproxy locally
-run:
+run: tidy
 	@go run ./cmd/kproxy -config configs/config.example.yaml
 
 ## generate-ca: Generate CA certificates

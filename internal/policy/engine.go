@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
