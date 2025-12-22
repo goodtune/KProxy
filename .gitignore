@@ -5,7 +5,8 @@ bin/
 *.dll
 *.so
 *.dylib
-kproxy
+/kproxy
+kproxy.exe
 
 # Test binary, built with `go test -c`
 *.test
