@@ -9,7 +9,7 @@ Implement a comprehensive web-based admin interface to provide visibility and co
 - **HTTP Router**: `gorilla/mux` (lightweight, mature)
 - **Session Management**: `gorilla/sessions` + JWT tokens
 - **Authentication**: `golang.org/x/crypto/bcrypt` for password hashing
-- **Database**: Existing SQLite through `internal/database`
+- **Storage**: BoltDB through `internal/storage` interfaces (pure Go, no CGO required)
 
 ### Frontend
 - **UI Framework**: **htmx** (server-side rendering, minimal JS)
@@ -134,29 +134,125 @@ Implement a comprehensive web-based admin interface to provide visibility and co
 - `GET /admin/sessions` - Sessions viewer
 - Various htmx partial endpoints for dynamic updates
 
-## Database Schema Extension
+## Storage Schema Extension
 
-New migration for admin users:
+New BoltDB bucket for admin users:
 
-```sql
-CREATE TABLE IF NOT EXISTS admin_users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_login DATETIME
-);
+**Bucket**: `admin_users`
+**Key Format**: `username` (string)
+**Value Format**: JSON blob
 
-CREATE INDEX idx_admin_users_username ON admin_users(username);
+```go
+type AdminUser struct {
+    ID           string    `json:"id"`
+    Username     string    `json:"username"`
+    PasswordHash string    `json:"password_hash"`
+    CreatedAt    time.Time `json:"created_at"`
+    UpdatedAt    time.Time `json:"updated_at"`
+    LastLogin    *time.Time `json:"last_login,omitempty"`
+}
 ```
+
+This will be stored in the BoltDB database alongside existing buckets (devices, profiles, rules, etc.).
+
+## BoltDB Storage Architecture
+
+KProxy now uses BoltDB (bbolt) instead of SQLite, providing:
+- **Pure Go**: No CGO required, easier cross-compilation
+- **Embedded**: Single file database, no external dependencies
+- **Interface-based**: Clean abstraction through `storage.Store` interface
+
+### Existing Storage Structure
+
+```
+internal/storage/
+├── store.go              # Root Store interface and sub-interfaces
+├── types.go              # Data types (Device, Profile, Rule, etc.)
+├── util.go               # Helper functions
+└── bolt/
+    ├── bolt.go           # BoltDB Store implementation
+    ├── device_store.go   # DeviceStore implementation
+    ├── profile_store.go  # ProfileStore implementation
+    ├── rule_store.go     # RuleStore implementation
+    ├── time_rule_store.go
+    ├── usage_limit_store.go
+    ├── bypass_rule_store.go
+    ├── usage_store.go    # UsageStore for sessions/daily usage
+    ├── log_store.go      # LogStore for HTTP/DNS logs
+    └── bolt_test.go
+```
+
+### Admin Interface Storage Integration
+
+We will extend the storage interfaces to include admin user management:
+
+1. **Add to `internal/storage/store.go`**:
+   - Add `AdminUsers() AdminUserStore` method to `Store` interface
+   - Define `AdminUserStore` interface with Get/List/Upsert/Delete methods
+
+2. **Add to `internal/storage/types.go`**:
+   - Define `AdminUser` struct
+
+3. **Create `internal/storage/bolt/admin_user_store.go`**:
+   - Implement AdminUserStore interface
+   - Use `admin_users` bucket
+   - Key: username, Value: JSON-encoded AdminUser
+
+This follows the existing pattern used for devices, profiles, and rules.
+
+### Required Storage Interface Extensions
+
+The current `LogStore` interface only supports adding and deleting logs:
+
+```go
+type LogStore interface {
+    AddRequestLog(ctx context.Context, log RequestLog) error
+    AddDNSLog(ctx context.Context, log DNSLog) error
+    DeleteRequestLogsBefore(ctx context.Context, cutoff time.Time) (int, error)
+    DeleteDNSLogsBefore(ctx context.Context, cutoff time.Time) (int, error)
+}
+```
+
+For the admin interface, we'll need to extend this with query methods:
+
+```go
+type LogStore interface {
+    // ... existing methods ...
+
+    // Query methods for admin interface
+    QueryRequestLogs(ctx context.Context, filter RequestLogFilter) ([]RequestLog, error)
+    QueryDNSLogs(ctx context.Context, filter DNSLogFilter) ([]DNSLog, error)
+}
+
+type RequestLogFilter struct {
+    DeviceID   string
+    Domain     string
+    Action     Action
+    StartTime  *time.Time
+    EndTime    *time.Time
+    Limit      int
+    Offset     int
+}
+
+type DNSLogFilter struct {
+    DeviceID   string
+    Domain     string
+    Action     string
+    StartTime  *time.Time
+    EndTime    *time.Time
+    Limit      int
+    Offset     int
+}
+```
+
+These query methods will use BoltDB's index buckets for efficient filtering.
 
 ## Implementation Phases
 
 ### Phase 5.1: Foundation
 1. Add dependencies (gorilla/mux, gorilla/sessions, JWT, bcrypt)
 2. Create `internal/admin` package structure
-3. Add admin_users table migration
+3. Add AdminUserStore interface and BoltDB implementation
 4. Implement authentication (password hashing, JWT, sessions)
 5. Implement middleware (auth, logging, rate limiting)
 6. Create basic HTTP server
@@ -170,32 +266,32 @@ CREATE INDEX idx_admin_users_username ON admin_users(username);
 12. Test authentication flow
 
 ### Phase 5.3: Device Management
-13. Implement device API handlers (CRUD)
+13. Implement device API handlers using `store.Devices()` (CRUD)
 14. Implement device web handlers
 15. Create device management UI
 16. Test device operations
 
 ### Phase 5.4: Profile Management
-17. Implement profile API handlers
+17. Implement profile API handlers using `store.Profiles()`
 18. Implement profile web handlers
 19. Create profile UI (tabbed interface)
 20. Test profile management
 
 ### Phase 5.5: Rules Management
-21. Implement rules API (regular, time, usage, bypass)
+21. Implement rules API using `store.Rules()`, `store.TimeRules()`, `store.UsageLimits()`, `store.BypassRules()`
 22. Create rules UI with priority ordering
 23. Implement policy reload after changes
 24. Test all rule types
 
 ### Phase 5.6: Logs & Monitoring
-25. Implement log API with filters and pagination
+25. Implement log API with filters using `store.Logs()` (extend with query methods)
 26. Create log viewer UI
 27. Add real-time updates
 28. Test log viewing
 
 ### Phase 5.7: Usage & Sessions
-29. Implement sessions API
-30. Implement statistics API
+29. Implement sessions API using `store.Usage()`
+30. Implement statistics API (aggregate data from storage)
 31. Create session management UI
 32. Create usage statistics views
 
@@ -230,9 +326,10 @@ CREATE INDEX idx_admin_users_username ON admin_users(username);
 
 ## Integration Points
 
-### Database
-- Use `*database.DB` from main
-- Reuse migration pattern
+### Storage
+- Use `storage.Store` interface from main
+- Add admin user store to storage interfaces
+- Access via `store.AdminUsers()` method
 
 ### Policy Engine
 ```go
@@ -302,8 +399,9 @@ logger := logger.With().Str("component", "admin").Logger()
 
 ## Critical Files
 
-- `internal/database/db.go` - Add admin migration
+- `internal/storage/store.go` - Add AdminUserStore interface
+- `internal/storage/bolt/bolt.go` - Add admin user bucket and implementation
 - `internal/policy/engine.go` - Reload() integration
 - `cmd/kproxy/main.go` - Initialize admin server
-- `internal/config/config.go` - AdminConfig extensions
+- `internal/config/config.go` - AdminConfig extensions (already exists)
 - `internal/metrics/metrics.go` - Server pattern reference
