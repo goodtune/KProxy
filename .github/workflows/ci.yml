@@ -270,15 +270,15 @@ jobs:
           echo ""
           echo "Testing endpoints..."
 
-          # Check health endpoint with verbose output
+          # Check health endpoint
           echo "1. Testing /health endpoint..."
-          curl -v https://localhost:8444/health 2>&1 | tee /tmp/health-check.log
-          if grep -q "200 OK" /tmp/health-check.log || grep -q '"status":"ok"' /tmp/health-check.log; then
-            echo "✓ Health endpoint responded"
+          code=$(curl -sk -o /tmp/health.json -w "%{http_code}" https://localhost:8444/health)
+          if [ "$code" = "200" ]; then
+            echo "✓ Health endpoint responded (HTTP $code)"
+            cat /tmp/health.json
           else
-            echo "✗ Health endpoint failed"
-            echo "Full response:"
-            cat /tmp/health-check.log
+            echo "✗ Health endpoint failed (HTTP $code)"
+            cat /tmp/health.json || true
             echo "KProxy logs:"
             tail -50 /tmp/kproxy.log
             exit 1
@@ -287,13 +287,12 @@ jobs:
           # Check login page
           echo ""
           echo "2. Testing /admin/login page..."
-          curl -v https://localhost:8444/admin/login 2>&1 | tee /tmp/login-check.log
-          if grep -q "200 OK" /tmp/login-check.log; then
-            echo "✓ Login page is accessible"
+          code=$(curl -sk -o /tmp/login.html -w "%{http_code}" https://localhost:8444/admin/login)
+          if [ "$code" = "200" ]; then
+            echo "✓ Login page is accessible (HTTP $code)"
           else
-            echo "✗ Login page not accessible"
-            echo "Full response:"
-            cat /tmp/login-check.log
+            echo "✗ Login page not accessible (HTTP $code)"
+            head -200 /tmp/login.html || true
             echo "KProxy logs:"
             tail -50 /tmp/kproxy.log
             exit 1
