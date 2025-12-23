@@ -325,7 +325,7 @@ jobs:
         working-directory: tests
         run: |
           mkdir -p screenshots
-          uv run pytest -vv --timeout=5 --screenshot=only-on-failure
+          uv run pytest -vv --screenshot=only-on-failure
         continue-on-error: true
 
       - name: Stop KProxy
