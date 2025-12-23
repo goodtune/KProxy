@@ -1,0 +1,273 @@
+{{define "sessions_content"}}
+<div class="flex h-screen bg-gray-100">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-800 text-white flex flex-col">
+        <div class="p-4 border-b border-gray-700">
+            <h1 class="text-xl font-bold">KProxy Admin</h1>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-2">
+            <a href="/admin/dashboard" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Dashboard
+            </a>
+            <a href="/admin/devices" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Devices
+            </a>
+            <a href="/admin/profiles" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Profiles
+            </a>
+            <a href="/admin/rules" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Rules
+            </a>
+            <a href="/admin/logs" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Logs
+            </a>
+            <a href="/admin/sessions" class="block px-4 py-2 rounded bg-gray-700 hover:bg-gray-600">
+                Sessions
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-gray-700">
+            <button id="logoutBtn" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-white">
+                Logout
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+        <div class="p-8">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-3xl font-bold text-gray-900">Sessions & Usage</h2>
+                <button id="refreshBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">
+                    Refresh
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="border-b border-gray-200 mb-6">
+                <nav class="-mb-px flex space-x-8">
+                    <button class="session-tab-btn border-b-2 border-blue-500 py-2 px-1 text-sm font-medium text-blue-600" data-tab="active">
+                        Active Sessions
+                    </button>
+                    <button class="session-tab-btn border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="usage">
+                        Daily Usage
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Active Sessions Tab -->
+            <div id="activeTab" class="session-content">
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Device</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Limit</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Activity</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Daily Usage Tab -->
+            <div id="usageTab" class="session-content hidden">
+                <div class="mb-4 flex items-center space-x-4">
+                    <label class="text-sm font-medium text-gray-700">Select Date:</label>
+                    <input type="date" id="usageDate" class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    <button id="loadUsageBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                        Load
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Device</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Limit</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usageTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+// Logout functionality
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/admin/login';
+    } catch (error) {
+        console.error('Logout failed:', error);
+    }
+});
+
+// Tab management
+const sessionTabBtns = document.querySelectorAll('.session-tab-btn');
+const sessionContents = document.querySelectorAll('.session-content');
+let currentTab = 'active';
+
+sessionTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tabName = btn.dataset.tab;
+        currentTab = tabName;
+
+        // Update tab buttons
+        sessionTabBtns.forEach(b => {
+            b.classList.remove('border-blue-500', 'text-blue-600');
+            b.classList.add('border-transparent', 'text-gray-500');
+        });
+        btn.classList.remove('border-transparent', 'text-gray-500');
+        btn.classList.add('border-blue-500', 'text-blue-600');
+
+        // Update tab content
+        sessionContents.forEach(content => content.classList.add('hidden'));
+        document.getElementById(tabName + 'Tab').classList.remove('hidden');
+
+        if (tabName === 'active') {
+            loadActiveSessions();
+        } else if (tabName === 'usage') {
+            loadDailyUsage();
+        }
+    });
+});
+
+// Load active sessions
+async function loadActiveSessions() {
+    try {
+        const response = await fetch('/api/sessions');
+        const data = await response.json();
+        const sessions = data.sessions || [];
+
+        renderActiveSessions(sessions);
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+    }
+}
+
+function renderActiveSessions(sessions) {
+    const tbody = document.getElementById('sessionsTableBody');
+
+    if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No active sessions</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sessions.map(session => {
+        const started = new Date(session.started_at).toLocaleString();
+        const lastActivity = new Date(session.last_activity).toLocaleString();
+
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 text-sm text-gray-900">${escapeHtml(session.device_id)}</td>
+                <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(session.limit_id)}</td>
+                <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(started)}</td>
+                <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(lastActivity)}</td>
+                <td class="px-6 py-4 text-sm">
+                    <button onclick="terminateSession('${session.id}')" class="text-red-600 hover:text-red-900">
+                        Terminate
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+window.terminateSession = async (sessionId) => {
+    if (!confirm('Are you sure you want to terminate this session?')) return;
+
+    try {
+        const response = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+        if (response.ok) {
+            await loadActiveSessions();
+        } else {
+            alert('Failed to terminate session');
+        }
+    } catch (error) {
+        console.error('Failed to terminate session:', error);
+        alert('Failed to terminate session');
+    }
+};
+
+// Load daily usage
+async function loadDailyUsage() {
+    const dateInput = document.getElementById('usageDate');
+    const date = dateInput.value || new Date().toISOString().split('T')[0];
+
+    try {
+        const response = await fetch(`/api/usage/${date}`);
+        const data = await response.json();
+        const usages = data.usages || [];
+
+        renderDailyUsage(usages);
+    } catch (error) {
+        console.error('Failed to load usage:', error);
+    }
+}
+
+function renderDailyUsage(usages) {
+    const tbody = document.getElementById('usageTableBody');
+
+    if (usages.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No usage data for this date</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = usages.map(usage => {
+        const hours = Math.floor(usage.total_seconds / 3600);
+        const minutes = Math.floor((usage.total_seconds % 3600) / 60);
+        const seconds = usage.total_seconds % 60;
+        const timeStr = `${hours}h ${minutes}m ${seconds}s`;
+
+        return `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 text-sm text-gray-900">${escapeHtml(usage.device_id)}</td>
+                <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(usage.limit_id)}</td>
+                <td class="px-6 py-4 text-sm font-medium text-gray-900">${escapeHtml(timeStr)}</td>
+                <td class="px-6 py-4 text-sm text-gray-600">${escapeHtml(usage.date)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Event listeners
+document.getElementById('refreshBtn').addEventListener('click', () => {
+    if (currentTab === 'active') {
+        loadActiveSessions();
+    } else {
+        loadDailyUsage();
+    }
+});
+
+document.getElementById('loadUsageBtn').addEventListener('click', () => {
+    loadDailyUsage();
+});
+
+// Set today's date as default
+document.getElementById('usageDate').valueAsDate = new Date();
+
+// Initial load
+loadActiveSessions();
+</script>
+{{end}}
