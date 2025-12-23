@@ -288,17 +288,17 @@ These query methods will use BoltDB's index buckets for efficient filtering.
 23. [x] Implement policy reload after changes - All rule modifications trigger `policyEngine.Reload()`
 24. [x] Test all rule types - Covered by profile tests (tab navigation and loading)
 
-### Phase 5.6: Logs & Monitoring
-25. Implement log API with filters using `store.Logs()` (extend with query methods)
-26. Create log viewer UI
-27. Add real-time updates
-28. Test log viewing
+### Phase 5.6: Logs & Monitoring ✅ COMPLETED
+25. [x] Implement log API with filters using `store.Logs()` (extend with query methods) - Extended LogStore interface, implemented QueryRequestLogs/QueryDNSLogs
+26. [x] Create log viewer UI - `internal/admin/static/templates/logs.html` with tabbed interface
+27. [x] Add real-time updates - Refresh button and auto-refresh capability
+28. [x] Test log viewing - `tests/test_admin_logs_sessions.py` (17 test cases for logs)
 
-### Phase 5.7: Usage & Sessions
-29. Implement sessions API using `store.Usage()`
-30. Implement statistics API (aggregate data from storage)
-31. Create session management UI
-32. Create usage statistics views
+### Phase 5.7: Usage & Sessions ✅ COMPLETED
+29. [x] Implement sessions API using `store.Usage()` - Extended UsageStore interface, implemented ListActiveSessions/ListDailyUsage
+30. [x] Implement statistics API (aggregate data from storage) - Daily usage queries by date
+31. [x] Create session management UI - `internal/admin/static/templates/sessions.html` with dual tabs
+32. [x] Create usage statistics views - Active sessions list + daily usage viewer with date picker
 
 ### Phase 5.8: Dashboard & Statistics
 33. Implement dashboard statistics
