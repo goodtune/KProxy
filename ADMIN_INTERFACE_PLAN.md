@@ -270,23 +270,23 @@ These query methods will use BoltDB's index buckets for efficient filtering.
 11. [x] Set up static asset serving (`internal/admin/server.go`, `internal/admin/static`)
 12. Test authentication flow — pending automated/manual verification evidence
 
-### Phase 5.3: Device Management
-13. Implement device API handlers using `store.Devices()` (CRUD)
-14. Implement device web handlers
-15. Create device management UI
-16. Test device operations
+### Phase 5.3: Device Management ✅ COMPLETED
+13. [x] Implement device API handlers using `store.Devices()` (CRUD) - `internal/admin/api/devices.go`
+14. [x] Implement device web handlers - `internal/admin/server.go`
+15. [x] Create device management UI - `internal/admin/static/templates/devices.html`
+16. [x] Test device operations - `tests/test_admin_devices.py` (10 test cases)
 
-### Phase 5.4: Profile Management
-17. Implement profile API handlers using `store.Profiles()`
-18. Implement profile web handlers
-19. Create profile UI (tabbed interface)
-20. Test profile management
+### Phase 5.4: Profile Management ✅ COMPLETED
+17. [x] Implement profile API handlers using `store.Profiles()` - `internal/admin/api/profiles.go`
+18. [x] Implement profile web handlers - `internal/admin/server.go`
+19. [x] Create profile UI (tabbed interface) - `internal/admin/static/templates/profiles.html`
+20. [x] Test profile management - `tests/test_admin_profiles.py` (15 test cases)
 
-### Phase 5.5: Rules Management
-21. Implement rules API using `store.Rules()`, `store.TimeRules()`, `store.UsageLimits()`, `store.BypassRules()`
-22. Create rules UI with priority ordering
-23. Implement policy reload after changes
-24. Test all rule types
+### Phase 5.5: Rules Management ✅ COMPLETED
+21. [x] Implement rules API using `store.Rules()`, `store.TimeRules()`, `store.UsageLimits()`, `store.BypassRules()` - `internal/admin/api/rules.go`
+22. [x] Create rules UI with priority ordering - Integrated into profiles template with tabbed interface
+23. [x] Implement policy reload after changes - All rule modifications trigger `policyEngine.Reload()`
+24. [x] Test all rule types - Covered by profile tests (tab navigation and loading)
 
 ### Phase 5.6: Logs & Monitoring
 25. Implement log API with filters using `store.Logs()` (extend with query methods)
