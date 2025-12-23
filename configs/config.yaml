@@ -1,0 +1,117 @@
+# KProxy Production Configuration
+# This is the default configuration installed with KProxy packages
+
+server:
+  # DNS server (primary entry point for clients)
+  dns_port: 53
+  dns_enable_udp: true
+  dns_enable_tcp: true
+
+  # Proxy ports
+  http_port: 80
+  https_port: 443
+
+  # Admin interface
+  admin_port: 8443
+  admin_domain: "kproxy.home.local"
+
+  # Metrics
+  metrics_port: 9090
+
+  # Bind address (0.0.0.0 for all interfaces)
+  bind_address: "0.0.0.0"
+
+dns:
+  # Upstream DNS servers for bypass/forwarded queries
+  upstream_servers:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+
+  # TTL settings
+  intercept_ttl: 60       # TTL for intercepted domains (low for quick config changes)
+  bypass_ttl_cap: 300     # Max TTL for bypassed domains (0 = no cap, use upstream)
+  block_ttl: 60           # TTL for blocked domains
+
+  # Query timeout
+  upstream_timeout: "5s"
+
+  # Global bypass domains (always bypass, never intercept)
+  # These are critical for system operation and certificate validation
+  global_bypass:
+    - "ocsp.*.com"        # Certificate validation
+    - "crl.*.com"
+    - "*.ocsp.*"
+    - "time.*.com"        # NTP-related
+    - "time.*.gov"
+
+tls:
+  # CA certificate and key paths
+  # IMPORTANT: Generate CA certificates before starting kproxy
+  # Run: sudo /usr/local/bin/kproxy-generate-ca
+  ca_cert: "/etc/kproxy/ca/root-ca.crt"
+  ca_key: "/etc/kproxy/ca/root-ca.key"
+
+  # Intermediate CA (for signing)
+  intermediate_cert: "/etc/kproxy/ca/intermediate-ca.crt"
+  intermediate_key: "/etc/kproxy/ca/intermediate-ca.key"
+
+  # Certificate cache settings
+  cert_cache_size: 1000
+  cert_cache_ttl: "24h"
+  cert_validity: "24h"
+
+database:
+  path: "/var/lib/kproxy/kproxy.db"
+
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json" # json, text
+  request_log_retention_days: 30
+
+policy:
+  # Default action for unknown devices
+  default_action: "block"  # or "allow"
+
+  # Default action for devices without matching rules
+  default_allow: false
+
+  # Device identification
+  use_mac_address: true
+  arp_cache_ttl: "5m"
+
+usage_tracking:
+  # Inactivity threshold for session tracking
+  inactivity_timeout: "2m"
+
+  # Minimum session duration to count
+  min_session_duration: "10s"
+
+  # Daily reset time (local timezone)
+  daily_reset_time: "00:00"
+
+response_modification:
+  # Enable/disable timer injection
+  enabled: true
+
+  # Sites where injection is disabled (security-sensitive sites)
+  disabled_hosts:
+    - "*.bank.com"
+    - "*.bank.*"
+    - "secure.*"
+    - "banking.*"
+    - "*.paypal.com"
+
+  # Content types to modify
+  allowed_content_types:
+    - "text/html"
+
+admin:
+  # Initial admin credentials (CHANGE THESE AFTER FIRST LOGIN!)
+  initial_username: "admin"
+  initial_password: "changeme"
+
+  # Session settings
+  session_timeout: "24h"
+
+  # Rate limiting
+  rate_limit: 100  # requests per minute
