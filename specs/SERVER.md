@@ -105,7 +105,7 @@
 |**Language**       |Go 1.22+                                             |Cross-platform, excellent concurrency, strong stdlib|
 |**HTTP Framework** |`net/http` + `github.com/gorilla/mux`                |Standard library + flexible routing                 |
 |**TLS/Certificate**|`crypto/tls`, `crypto/x509`, `smallstep/certificates`|Native Go crypto + step-ca integration              |
-|**Database**       |SQLite (embedded) via `modernc.org/sqlite`           |Pure Go, zero dependencies, portable                |
+|**Database**       |Embedded pure-Go KV store (e.g., `bbolt`/`pebble`)   |CGO-free builds, portable, pluggable storage layer  |
 |**Configuration**  |YAML + Environment Variables                         |Human-readable, 12-factor friendly                  |
 |**Metrics**        |`prometheus/client_golang`                           |Industry standard observability                     |
 |**Admin UI**       |Embedded SPA (React/Preact)                          |Single binary deployment                            |
@@ -569,40 +569,21 @@ All DNS queries are logged for visibility:
 
 ```go
 type DNSLogEntry struct {
-    ID          int64     `db:"id"`
-    Timestamp   time.Time `db:"timestamp"`
-    ClientIP    string    `db:"client_ip"`
-    DeviceID    string    `db:"device_id"`
-    DeviceName  string    `db:"device_name"`
-    Domain      string    `db:"domain"`
-    QueryType   string    `db:"query_type"`   // A, AAAA, CNAME, etc.
-    Action      string    `db:"action"`       // INTERCEPT, BYPASS, BLOCK
-    ResponseIP  string    `db:"response_ip"`
-    Upstream    string    `db:"upstream"`     // Which upstream DNS was used (for bypass)
-    Latency     int64     `db:"latency_ms"`
+    ID          string    `json:"id"`
+    Timestamp   time.Time `json:"timestamp"`
+    ClientIP    string    `json:"client_ip"`
+    DeviceID    string    `json:"device_id"`
+    DeviceName  string    `json:"device_name"`
+    Domain      string    `json:"domain"`
+    QueryType   string    `json:"query_type"`   // A, AAAA, CNAME, etc.
+    Action      string    `json:"action"`       // INTERCEPT, BYPASS, BLOCK
+    ResponseIP  string    `json:"response_ip"`
+    Upstream    string    `json:"upstream"`     // Which upstream DNS was used (for bypass)
+    Latency     int64     `json:"latency_ms"`
 }
 
-// SQL Schema addition
-const dnsLogSchema = `
-CREATE TABLE IF NOT EXISTS dns_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    client_ip TEXT NOT NULL,
-    device_id TEXT,
-    device_name TEXT,
-    domain TEXT NOT NULL,
-    query_type TEXT NOT NULL,
-    action TEXT NOT NULL,
-    response_ip TEXT,
-    upstream TEXT,
-    latency_ms INTEGER
-);
-
-CREATE INDEX idx_dns_timestamp ON dns_logs(timestamp);
-CREATE INDEX idx_dns_device ON dns_logs(device_id, timestamp);
-CREATE INDEX idx_dns_domain ON dns_logs(domain, timestamp);
-CREATE INDEX idx_dns_action ON dns_logs(action, timestamp);
-`
+// Persisted as JSON blobs inside a `dns_logs` bucket keyed by `<date>/<timestamp>-<random>`
+// with companion index buckets (e.g., `idx_dns_device/<deviceID>/<timestamp>-<id>`) for queries.
 ```
 
 ### 4.6 TTL Strategy
@@ -885,6 +866,19 @@ func (pe *PolicyEngine) identifyDevice(clientIP net.IP, clientMAC net.HardwareAd
 }
 ```
 
+### 5.4 Storage Abstraction
+
+Persistence is handled through repository interfaces backed by a default embedded KV store. The implementation supplies adapters such as `DeviceStore`, `ProfileStore`, `RuleStore`, `LogStore`, and `UsageStore`, each responsible for serializing domain objects to JSON and storing them beneath deterministic keys:
+
+- `devices/<deviceID>` – device metadata and identifier list
+- `profiles/<profileID>` – profile definition including inline rules, time rules, and usage limits
+- `rules/<ruleID>` – optional standalone rule bucket for reuse across profiles
+- `usage/sessions/<deviceID>/<limitID>/<sessionID>` – active session state
+- `usage/daily/<deviceID>/<limitID>/<YYYYMMDD>` – accumulated seconds for reporting/limits
+- `logs/http/<YYYYMMDD>/<timestamp>-<uuid>` and `logs/dns/...` – append-only records with helper buckets for indexes (e.g., `indexes/http/device/<deviceID>/<timestamp>-<id>`)
+
+The proxy code interacts only with these interfaces, allowing future persistence layers (SQLite, Postgres, cloud services) without touching business logic while keeping the default build CGO-free.
+
 -----
 
 ## 6. Usage Tracking & Time Limits
@@ -939,7 +933,7 @@ func (ut *UsageTracker) RecordActivity(deviceID, limitID string) *UsageSession {
 }
 
 func (ut *UsageTracker) GetTodayUsage(deviceID, limitID string, resetTime string) time.Duration {
-    // Query database for today's accumulated usage
+    // Query storage for today's accumulated usage
     // Sum all sessions since last reset time
     // ...
 }
@@ -1141,70 +1135,37 @@ response_modification:
 
 ```go
 type RequestLog struct {
-    ID            int64     `db:"id"`
-    Timestamp     time.Time `db:"timestamp"`
-    DeviceID      string    `db:"device_id"`
-    DeviceName    string    `db:"device_name"`
-    ClientIP      string    `db:"client_ip"`
-    Method        string    `db:"method"`
-    Host          string    `db:"host"`
-    Path          string    `db:"path"`
-    Query         string    `db:"query"`
-    UserAgent     string    `db:"user_agent"`
-    ContentType   string    `db:"content_type"`
-    StatusCode    int       `db:"status_code"`
-    ResponseSize  int64     `db:"response_size"`
-    Duration      int64     `db:"duration_ms"`
-    Action        string    `db:"action"`        // ALLOW, BLOCK
-    MatchedRuleID string    `db:"matched_rule_id"`
-    Reason        string    `db:"reason"`
-    Category      string    `db:"category"`
-    Encrypted     bool      `db:"encrypted"`     // Was this HTTPS?
+    ID            string    `json:"id"`
+    Timestamp     time.Time `json:"timestamp"`
+    DeviceID      string    `json:"device_id"`
+    DeviceName    string    `json:"device_name"`
+    ClientIP      string    `json:"client_ip"`
+    Method        string    `json:"method"`
+    Host          string    `json:"host"`
+    Path          string    `json:"path"`
+    Query         string    `json:"query"`
+    UserAgent     string    `json:"user_agent"`
+    ContentType   string    `json:"content_type"`
+    StatusCode    int       `json:"status_code"`
+    ResponseSize  int64     `json:"response_size"`
+    Duration      int64     `json:"duration_ms"`
+    Action        string    `json:"action"`        // ALLOW, BLOCK
+    MatchedRuleID string    `json:"matched_rule_id"`
+    Reason        string    `json:"reason"`
+    Category      string    `json:"category"`
+    Encrypted     bool      `json:"encrypted"`     // Was this HTTPS?
 }
 ```
 
-### 8.2 SQLite Schema
+### 8.2 Embedded Store Layout
 
-```sql
-CREATE TABLE IF NOT EXISTS request_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    device_id TEXT NOT NULL,
-    device_name TEXT,
-    client_ip TEXT NOT NULL,
-    method TEXT NOT NULL,
-    host TEXT NOT NULL,
-    path TEXT NOT NULL,
-    query TEXT,
-    user_agent TEXT,
-    content_type TEXT,
-    status_code INTEGER,
-    response_size INTEGER,
-    duration_ms INTEGER,
-    action TEXT NOT NULL,
-    matched_rule_id TEXT,
-    reason TEXT,
-    category TEXT,
-    encrypted INTEGER NOT NULL DEFAULT 0
-);
+- `logs/http/<YYYYMMDD>/<timestamp>-<uuid>` – append-only HTTP logs stored as JSON.
+- `indexes/http/device/<deviceID>/<timestamp>-<id>` – secondary index for device filtering.
+- `indexes/http/host/<host>/<timestamp>-<id>` – host-based lookups.
+- `logs/dns/...` – mirrors HTTP structure for DNS activity.
+- `usage/daily/<deviceID>/<limitID>/<YYYYMMDD>` – cumulative seconds counters updated atomically.
 
-CREATE INDEX idx_logs_timestamp ON request_logs(timestamp);
-CREATE INDEX idx_logs_device ON request_logs(device_id, timestamp);
-CREATE INDEX idx_logs_host ON request_logs(host, timestamp);
-CREATE INDEX idx_logs_action ON request_logs(action, timestamp);
-
--- Daily usage aggregation table
-CREATE TABLE IF NOT EXISTS daily_usage (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,
-    device_id TEXT NOT NULL,
-    limit_id TEXT NOT NULL,
-    total_seconds INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(date, device_id, limit_id)
-);
-
-CREATE INDEX idx_usage_device_date ON daily_usage(device_id, date);
-```
+Repositories expose query methods that take optional filters (time window, device, host). Implementations iterate efficiently using key prefixes rather than SQL `WHERE` clauses, keeping performance predictable while remaining CGO-free.
 
 ### 8.3 Log Rotation
 
@@ -1212,11 +1173,7 @@ CREATE INDEX idx_usage_device_date ON daily_usage(device_id, date);
 // Automatic cleanup of old logs
 func (l *Logger) Cleanup(retentionDays int) error {
     cutoff := time.Now().AddDate(0, 0, -retentionDays)
-    _, err := l.db.Exec(
-        "DELETE FROM request_logs WHERE timestamp < ?",
-        cutoff,
-    )
-    return err
+    return l.store.DeletePrefixBefore("logs/http", cutoff)
 }
 
 // Run daily at midnight
@@ -1533,8 +1490,9 @@ tls:
   cert_cache_ttl: "24h"
   cert_validity: "24h"
 
-database:
-  path: "/var/lib/kproxy/kproxy.db"
+storage:
+  path: "/var/lib/kproxy/kproxy.db"   # Bolt/Pebble file path
+  type: "bolt"                        # bolt, pebble, or custom backend via plugins
 
 logging:
   level: "info"  # debug, info, warn, error
@@ -1594,7 +1552,7 @@ admin:
 KPROXY_SERVER_HTTP_PORT=8080
 KPROXY_SERVER_ADMIN_DOMAIN=proxy.example.com
 KPROXY_TLS_CA_CERT=/path/to/cert
-KPROXY_DATABASE_PATH=/data/kproxy.db
+KPROXY_STORAGE_PATH=/data/kproxy.db
 KPROXY_LOGGING_LEVEL=debug
 ```
 
@@ -1649,10 +1607,10 @@ github.com/goodtune/kproxy/
 │   │   ├── auth.go              # Authentication
 │   │   ├── handlers.go          # API handlers
 │   │   └── sse.go               # Server-sent events
-│   └── database/
-│       ├── db.go                # Database connection
-│       ├── migrations/          # Schema migrations
-│       └── queries/             # SQL queries
+│   └── storage/
+│       ├── store.go             # Repository interfaces
+│       ├── bolt/                # Default bolt/pebble implementation
+│       └── indexes.go           # Helper index builders
 ├── ui/                          # Admin UI (React/Preact)
 │   ├── src/
 │   ├── public/
@@ -1720,7 +1678,7 @@ github.com/goodtune/kproxy/
 - [x] DNS bypass rules (forward to upstream, return real IP)
 - [x] Path-based filtering for HTTP
 - [x] Allow/block decisions
-- [x] SQLite database integration
+- [x] Embedded storage interface for policy data
 - [x] Block page rendering
 
 **Testing:**
@@ -1733,12 +1691,11 @@ github.com/goodtune/kproxy/
 
 **Implementation Details:**
 - Policy engine with device/profile/rule management in `internal/policy/engine.go`
-- Complete SQLite schema with migrations in `internal/database/db.go`
+- Storage abstraction implemented in `internal/storage` with key/value buckets for devices, profiles, rules, time_rules, usage_limits, bypass_rules
 - DNS bypass logic with global and per-device bypass rules
 - Domain matching with wildcard and glob pattern support
 - Path-based filtering with prefix and glob matching
 - Styled block page with device and reason information
-- Full database schema including devices, profiles, rules, time_rules, usage_limits, bypass_rules
 
 ### Phase 3: Time Rules & Usage Tracking (Week 5-6) ✅ COMPLETE
 
@@ -1757,12 +1714,12 @@ github.com/goodtune/kproxy/
 - ✅ Daily reset scheduler implemented
 
 **Implementation Status:**
-- ✅ Database schema complete (`time_rules`, `usage_limits`, `daily_usage`, `usage_sessions` tables)
+- ✅ Storage buckets defined for time rules, usage limits, daily aggregates, and sessions
 - ✅ Time-of-access evaluation in policy engine (`isWithinAllowedTime` function)
 - ✅ Time rules block access outside allowed hours
 - ✅ Active usage tracking with inactivity detection (`internal/usage/tracker.go`)
 - ✅ Session management (start/stop/accumulate with 2-minute inactivity timeout)
-- ✅ Daily usage aggregation (sessions aggregated to daily_usage table)
+- ✅ Daily usage aggregation (sessions aggregated to `usage/daily` counters)
 - ✅ Time limit enforcement when daily limit exceeded (integrated into policy engine)
 - ✅ Daily reset mechanism (`internal/usage/reset.go` with configurable reset time)
 
@@ -1927,8 +1884,8 @@ require (
     // DNS server
     github.com/miekg/dns v1.1.58
     
-    // Database
-    modernc.org/sqlite v1.28.0
+    // Embedded storage (default implementation)
+    go.etcd.io/bbolt v1.3.8
     
     // Configuration
     github.com/spf13/viper v1.18.2
@@ -2004,7 +1961,7 @@ For a home network with 10 devices:
 For home use, single instance is sufficient. If HA is needed:
 
 - Run multiple instances behind load balancer
-- Share SQLite via networked storage (or migrate to PostgreSQL)
+- Share the embedded storage via replicated volumes or migrate the storage interface to a multi-node backend (e.g., PostgreSQL)
 - Share CA keys between instances
 
 -----
@@ -2028,7 +1985,7 @@ For home use, single instance is sufficient. If HA is needed:
 ### 15.3 Data Privacy
 
 - Logs contain sensitive browsing history
-- Encrypt database at rest (SQLite encryption extension)
+- Encrypt storage files at rest (filesystem encryption or backend-native support)
 - Implement data retention policies
 - Secure log access (admin only)
 
@@ -2058,7 +2015,7 @@ For home use, single instance is sufficient. If HA is needed:
 - DNS bypass forwards to upstream and returns real IP
 - DNS intercept returns proxy IP
 - Full proxy flow (HTTP and HTTPS)
-- Database operations
+- Storage operations
 - Admin API endpoints
 - SSE streaming
 

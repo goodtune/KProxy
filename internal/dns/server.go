@@ -1,14 +1,15 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/goodtune/kproxy/internal/database"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
+	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog"
 )
@@ -19,7 +20,7 @@ type Server struct {
 	upstreamDNS  []string
 	policyEngine *policy.Engine
 	logger       zerolog.Logger
-	db           *database.DB
+	logStore     storage.LogStore
 
 	// TTL settings
 	interceptTTL uint32
@@ -48,7 +49,7 @@ type Config struct {
 }
 
 // NewServer creates a new DNS server
-func NewServer(config Config, policy *policy.Engine, db *database.DB, logger zerolog.Logger) (*Server, error) {
+func NewServer(config Config, policy *policy.Engine, logStore storage.LogStore, logger zerolog.Logger) (*Server, error) {
 	proxyIP := net.ParseIP(config.ProxyIP)
 	if proxyIP == nil {
 		return nil, fmt.Errorf("invalid proxy IP: %s", config.ProxyIP)
@@ -58,7 +59,7 @@ func NewServer(config Config, policy *policy.Engine, db *database.DB, logger zer
 		proxyIP:      proxyIP,
 		upstreamDNS:  config.UpstreamDNS,
 		policyEngine: policy,
-		db:           db,
+		logStore:     logStore,
 		logger:       logger.With().Str("component", "dns").Logger(),
 		interceptTTL: config.InterceptTTL,
 		bypassTTLCap: config.BypassTTLCap,
@@ -318,7 +319,7 @@ func (s *Server) getResponseIP(answer dns.RR) string {
 	return ""
 }
 
-// logDNS logs a DNS query to the database
+// logDNS logs a DNS query to storage
 func (s *Server) logDNS(clientIP net.IP, domain, queryType, action, responseIP, upstream string, latencyMS int64) error {
 	// Identify device
 	device := s.policyEngine.IdentifyDevice(clientIP, nil)
@@ -329,12 +330,15 @@ func (s *Server) logDNS(clientIP net.IP, domain, queryType, action, responseIP, 
 		deviceName = device.Name
 	}
 
-	_, err := s.db.Exec(`
-		INSERT INTO dns_logs (
-			client_ip, device_id, device_name, domain, query_type,
-			action, response_ip, upstream, latency_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, clientIP.String(), deviceID, deviceName, domain, queryType, action, responseIP, upstream, latencyMS)
-
-	return err
+	return s.logStore.AddDNSLog(context.Background(), storage.DNSLog{
+		DeviceID:   deviceID,
+		DeviceName: deviceName,
+		ClientIP:   clientIP.String(),
+		Domain:     domain,
+		QueryType:  queryType,
+		Action:     action,
+		ResponseIP: responseIP,
+		Upstream:   upstream,
+		LatencyMS:  latencyMS,
+	})
 }
