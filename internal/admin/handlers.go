@@ -63,9 +63,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	WriteJSON(w, http.StatusOK, resp)
 
 	s.logger.Info().
 		Str("username", req.Username).
@@ -115,9 +113,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Message: "Logged out successfully",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	WriteJSON(w, http.StatusOK, resp)
 
 	s.logger.Info().Str("session_id", sessionID).Msg("User logged out")
 }
@@ -132,9 +128,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		Username: username,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	WriteJSON(w, http.StatusOK, user)
 }
 
 // handleChangePassword handles password change requests.

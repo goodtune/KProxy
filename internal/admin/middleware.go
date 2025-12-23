@@ -69,10 +69,8 @@ func AuthMiddleware(auth *AuthService) func(http.Handler) http.Handler {
 
 			// Refresh session if it exists
 			if sessionID != "" {
-				if err := auth.RefreshSession(sessionID); err != nil {
-					// Session expired or not found, but token is valid
-					// Continue with token-based auth
-				}
+				_ = auth.RefreshSession(sessionID)
+				// Ignore errors - if session refresh fails, we continue with token-based auth
 			}
 
 			// Add user info to context

@@ -340,11 +340,6 @@ func WriteError(w http.ResponseWriter, statusCode int, message string) {
 	})
 }
 
-// For backward compatibility within this package
-func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	WriteJSON(w, statusCode, data)
-}
-
 func writeError(w http.ResponseWriter, statusCode int, message string) {
 	WriteError(w, statusCode, message)
 }
