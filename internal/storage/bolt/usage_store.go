@@ -25,9 +25,76 @@ func (s *usageStore) GetSession(ctx context.Context, id string) (*storage.UsageS
 	return getBucketValue[storage.UsageSession](ctx, s.db, bucketSessions, id)
 }
 
+func (s *usageStore) ListActiveSessions(ctx context.Context) ([]storage.UsageSession, error) {
+	var sessions []storage.UsageSession
+
+	return sessions, s.db.View(func(tx *bbolt.Tx) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		b := tx.Bucket([]byte(bucketSessions))
+		if b == nil {
+			return nil
+		}
+
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			var session storage.UsageSession
+			if err := unmarshal(v, &session); err != nil {
+				continue
+			}
+
+			// Only return active sessions
+			if session.Active {
+				sessions = append(sessions, session)
+			}
+		}
+
+		return nil
+	})
+}
+
 func (s *usageStore) GetDailyUsage(ctx context.Context, date string, deviceID, limitID string) (*storage.DailyUsage, error) {
 	key := dailyUsageKey(date, deviceID, limitID)
 	return getBucketValue[storage.DailyUsage](ctx, s.db, bucketDailyUsage, key)
+}
+
+func (s *usageStore) ListDailyUsage(ctx context.Context, date string) ([]storage.DailyUsage, error) {
+	var usages []storage.DailyUsage
+
+	return usages, s.db.View(func(tx *bbolt.Tx) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		b := tx.Bucket([]byte(bucketDailyUsage))
+		if b == nil {
+			return nil
+		}
+
+		prefix := []byte(date + "/")
+		c := b.Cursor()
+
+		for k, v := c.Seek(prefix); k != nil && len(k) >= len(prefix) && string(k[:len(prefix)]) == string(prefix); k, v = c.Next() {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			var usage storage.DailyUsage
+			if err := unmarshal(v, &usage); err != nil {
+				continue
+			}
+
+			usages = append(usages, usage)
+		}
+
+		return nil
+	})
 }
 
 func (s *usageStore) IncrementDailyUsage(ctx context.Context, date string, deviceID, limitID string, seconds int64) error {

@@ -100,12 +100,23 @@ response_modification:
     - "text/html"
 
 admin:
+  # Enable/disable admin interface
+  enabled: true
+
+  # Admin interface port and bind address
+  port: 8443
+  bind_address: "0.0.0.0"
+
   # Initial admin credentials (change on first login!)
   initial_username: "admin"
   initial_password: "changeme"
+
+  # JWT secret for session tokens (CHANGE THIS!)
+  jwt_secret: "change-this-to-a-random-secret-key"
 
   # Session settings
   session_timeout: "24h"
 
   # Rate limiting
-  rate_limit: 100  # requests per minute
+  rate_limit: 100  # requests per window
+  rate_limit_window: "1m"
