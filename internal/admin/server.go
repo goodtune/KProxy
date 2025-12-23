@@ -25,7 +25,7 @@ var staticFS embed.FS
 // Config holds the admin server configuration.
 type Config struct {
 	ListenAddr      string
-	ServerName      string   // Hostname for TLS certificate generation
+	ServerName      string // Hostname for TLS certificate generation
 	JWTSecret       string
 	TokenExpiration time.Duration
 	RateLimit       int
@@ -35,16 +35,16 @@ type Config struct {
 
 // Server represents the admin HTTP server.
 type Server struct {
-	config        Config
-	store         storage.Store
-	policyEngine  *policy.Engine
-	ca            *ca.CA
-	auth          *AuthService
-	rateLimiter   *RateLimiter
-	server        *http.Server
-	router        *mux.Router
-	templates     *template.Template
-	logger        zerolog.Logger
+	config       Config
+	store        storage.Store
+	policyEngine *policy.Engine
+	ca           *ca.CA
+	auth         *AuthService
+	rateLimiter  *RateLimiter
+	server       *http.Server
+	router       *mux.Router
+	templates    *template.Template
+	logger       zerolog.Logger
 }
 
 // NewServer creates a new admin server.
