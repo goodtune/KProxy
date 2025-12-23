@@ -1,22 +1,23 @@
 package usage
 
 import (
+	"context"
 	"time"
 
-	"github.com/goodtune/kproxy/internal/database"
+	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
 
 // ResetScheduler manages daily usage resets
 type ResetScheduler struct {
-	db        *database.DB
-	resetTime time.Time // Time of day to reset (only hour and minute are used)
-	logger    zerolog.Logger
-	stopChan  chan struct{}
+	usageStore storage.UsageStore
+	resetTime  time.Time // Time of day to reset (only hour and minute are used)
+	logger     zerolog.Logger
+	stopChan   chan struct{}
 }
 
 // NewResetScheduler creates a new reset scheduler
-func NewResetScheduler(db *database.DB, resetTime string, logger zerolog.Logger) (*ResetScheduler, error) {
+func NewResetScheduler(usageStore storage.UsageStore, resetTime string, logger zerolog.Logger) (*ResetScheduler, error) {
 	// Parse reset time (HH:MM format)
 	parsedTime, err := time.Parse("15:04", resetTime)
 	if err != nil {
@@ -24,10 +25,10 @@ func NewResetScheduler(db *database.DB, resetTime string, logger zerolog.Logger)
 	}
 
 	rs := &ResetScheduler{
-		db:        db,
-		resetTime: parsedTime,
-		logger:    logger.With().Str("component", "reset-scheduler").Logger(),
-		stopChan:  make(chan struct{}),
+		usageStore: usageStore,
+		resetTime:  parsedTime,
+		logger:     logger.With().Str("component", "reset-scheduler").Logger(),
+		stopChan:   make(chan struct{}),
 	}
 
 	return rs, nil
@@ -99,35 +100,26 @@ func (rs *ResetScheduler) performReset() {
 	retentionDays := 90 // Keep 90 days of history
 	cutoffDate := time.Now().AddDate(0, 0, -retentionDays).Format("2006-01-02")
 
-	result, err := rs.db.Exec(`
-		DELETE FROM daily_usage
-		WHERE date < ?
-	`, cutoffDate)
-
+	rowsDeleted, err := rs.usageStore.DeleteDailyUsageBefore(context.Background(), cutoffDate)
 	if err != nil {
 		rs.logger.Error().Err(err).Msg("Failed to clean up old daily usage data")
 		return
 	}
 
-	rowsDeleted, _ := result.RowsAffected()
 	rs.logger.Info().
-		Int64("rows_deleted", rowsDeleted).
+		Int64("rows_deleted", int64(rowsDeleted)).
 		Str("cutoff_date", cutoffDate).
 		Msg("Daily usage reset complete, old data cleaned up")
 
 	// Also clean up old finalized sessions
-	result, err = rs.db.Exec(`
-		DELETE FROM usage_sessions
-		WHERE active = 0 AND started_at < ?
-	`, cutoffDate)
-
+	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
+	sessionsDeleted, err := rs.usageStore.DeleteInactiveSessionsBefore(context.Background(), cutoffTime)
 	if err != nil {
 		rs.logger.Error().Err(err).Msg("Failed to clean up old sessions")
 		return
 	}
 
-	sessionsDeleted, _ := result.RowsAffected()
 	rs.logger.Info().
-		Int64("sessions_deleted", sessionsDeleted).
+		Int64("sessions_deleted", int64(sessionsDeleted)).
 		Msg("Old sessions cleaned up")
 }

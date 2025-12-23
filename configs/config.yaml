@@ -60,8 +60,9 @@ tls:
   cert_cache_ttl: "24h"
   cert_validity: "24h"
 
-database:
-  path: "/var/lib/kproxy/kproxy.db"
+storage:
+  type: "bolt"
+  path: "/var/lib/kproxy/kproxy.bolt"
 
 logging:
   level: "info"  # debug, info, warn, error

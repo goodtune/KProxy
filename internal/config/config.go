@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -13,7 +14,7 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	DNS      DNSConfig      `mapstructure:"dns"`
 	TLS      TLSConfig      `mapstructure:"tls"`
-	Database DatabaseConfig `mapstructure:"database"`
+	Storage  StorageConfig  `mapstructure:"storage"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 	Policy   PolicyConfig   `mapstructure:"policy"`
 	Usage    UsageConfig    `mapstructure:"usage_tracking"`
@@ -55,9 +56,10 @@ type TLSConfig struct {
 	CertValidity     string `mapstructure:"cert_validity"`
 }
 
-// DatabaseConfig defines database connection settings
-type DatabaseConfig struct {
+// StorageConfig defines storage backend settings
+type StorageConfig struct {
 	Path string `mapstructure:"path"`
+	Type string `mapstructure:"type"`
 }
 
 // LoggingConfig defines logging behavior
@@ -168,8 +170,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tls.cert_cache_ttl", "24h")
 	v.SetDefault("tls.cert_validity", "24h")
 
-	// Database defaults
-	v.SetDefault("database.path", "/var/lib/kproxy/kproxy.db")
+	// Storage defaults
+	v.SetDefault("storage.path", "/var/lib/kproxy/kproxy.bolt")
+	v.SetDefault("storage.type", "bolt")
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
@@ -217,15 +220,19 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("at least one upstream DNS server is required")
 	}
 
-	// Validate database path
-	if cfg.Database.Path == "" {
-		return fmt.Errorf("database path is required")
+	// Validate storage path
+	if cfg.Storage.Path == "" {
+		return fmt.Errorf("storage path is required")
 	}
 
-	// Ensure database directory exists
-	dbDir := cfg.Database.Path[:strings.LastIndex(cfg.Database.Path, "/")]
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
-		return fmt.Errorf("failed to create database directory: %w", err)
+	if cfg.Storage.Type == "" {
+		cfg.Storage.Type = "bolt"
+	}
+
+	// Ensure storage directory exists
+	storageDir := filepath.Dir(cfg.Storage.Path)
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		return fmt.Errorf("failed to create storage directory: %w", err)
 	}
 
 	return nil

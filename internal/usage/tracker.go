@@ -1,16 +1,17 @@
 package usage
 
 import (
+	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/goodtune/kproxy/internal/database"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
+	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
 
@@ -24,7 +25,7 @@ const (
 
 // Tracker manages usage tracking sessions
 type Tracker struct {
-	db                  *database.DB
+	usageStore          storage.UsageStore
 	sessions            map[string]*Session // key: sessionID
 	deviceLimitSessions map[string]string   // key: deviceID:limitID -> sessionID
 	inactivityTimeout   time.Duration
@@ -40,7 +41,7 @@ type Config struct {
 }
 
 // NewTracker creates a new usage tracker
-func NewTracker(db *database.DB, config Config, logger zerolog.Logger) *Tracker {
+func NewTracker(usageStore storage.UsageStore, config Config, logger zerolog.Logger) *Tracker {
 	if config.InactivityTimeout == 0 {
 		config.InactivityTimeout = DefaultInactivityTimeout
 	}
@@ -49,7 +50,7 @@ func NewTracker(db *database.DB, config Config, logger zerolog.Logger) *Tracker 
 	}
 
 	t := &Tracker{
-		db:                  db,
+		usageStore:          usageStore,
 		sessions:            make(map[string]*Session),
 		deviceLimitSessions: make(map[string]string),
 		inactivityTimeout:   config.InactivityTimeout,
@@ -127,7 +128,7 @@ func (t *Tracker) recordActivityInternal(deviceID, limitID string) (*Session, er
 	t.sessions[session.ID] = session
 	t.deviceLimitSessions[key] = session.ID
 
-	// Save to database
+	// Save to storage
 	if err := t.saveSession(session); err != nil {
 		t.logger.Error().Err(err).Str("session_id", session.ID).Msg("Failed to save new session")
 		return session, err
@@ -151,19 +152,16 @@ func (t *Tracker) GetTodayUsage(deviceID, limitID string, resetTime time.Time) (
 	now := time.Now()
 	today := getResetDate(now, resetTime)
 
-	// Query database for today's usage
-	var totalSeconds sql.NullInt64
-	err := t.db.QueryRow(`
-		SELECT total_seconds
-		FROM daily_usage
-		WHERE date = ? AND device_id = ? AND limit_id = ?
-	`, today.Format("2006-01-02"), deviceID, limitID).Scan(&totalSeconds)
-
-	if err != nil && err != sql.ErrNoRows {
+	// Query storage for today's usage
+	dailyUsage, err := t.usageStore.GetDailyUsage(context.Background(), today.Format("2006-01-02"), deviceID, limitID)
+	if err != nil && !errorsIsNotFound(err) {
 		return 0, fmt.Errorf("failed to query daily usage: %w", err)
 	}
 
-	usage := time.Duration(totalSeconds.Int64) * time.Second
+	var usage time.Duration
+	if err == nil && dailyUsage != nil {
+		usage = time.Duration(dailyUsage.TotalSeconds) * time.Second
+	}
 
 	// Add current active session time if exists
 	key := deviceID + ":" + limitID
@@ -233,8 +231,8 @@ func (t *Tracker) finalizeSession(session *Session) error {
 		delete(t.sessions, session.ID)
 		delete(t.deviceLimitSessions, session.DeviceID+":"+session.LimitID)
 
-		// Delete from database
-		_, _ = t.db.Exec("DELETE FROM usage_sessions WHERE id = ?", session.ID)
+		// Delete from storage
+		_ = t.usageStore.DeleteSession(context.Background(), session.ID)
 
 		return nil
 	}
@@ -242,14 +240,16 @@ func (t *Tracker) finalizeSession(session *Session) error {
 	// Mark as inactive
 	session.Active = false
 
-	// Update database
-	_, err := t.db.Exec(`
-		UPDATE usage_sessions
-		SET active = 0, accumulated_seconds = ?
-		WHERE id = ?
-	`, session.AccumulatedSeconds, session.ID)
-
-	if err != nil {
+	// Update storage
+	if err := t.usageStore.UpsertSession(context.Background(), storage.UsageSession{
+		ID:                 session.ID,
+		DeviceID:           session.DeviceID,
+		LimitID:            session.LimitID,
+		StartedAt:          session.StartedAt,
+		LastActivity:       session.LastActivity,
+		AccumulatedSeconds: session.AccumulatedSeconds,
+		Active:             session.Active,
+	}); err != nil {
 		return fmt.Errorf("failed to update session: %w", err)
 	}
 
@@ -272,14 +272,17 @@ func (t *Tracker) finalizeSession(session *Session) error {
 	return nil
 }
 
-// saveSession saves a new session to the database
+// saveSession saves a new session to storage
 func (t *Tracker) saveSession(session *Session) error {
-	_, err := t.db.Exec(`
-		INSERT INTO usage_sessions (id, device_id, limit_id, started_at, last_activity, accumulated_seconds, active)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, session.ID, session.DeviceID, session.LimitID, session.StartedAt, session.LastActivity, session.AccumulatedSeconds, 1)
-
-	return err
+	return t.usageStore.UpsertSession(context.Background(), storage.UsageSession{
+		ID:                 session.ID,
+		DeviceID:           session.DeviceID,
+		LimitID:            session.LimitID,
+		StartedAt:          session.StartedAt,
+		LastActivity:       session.LastActivity,
+		AccumulatedSeconds: session.AccumulatedSeconds,
+		Active:             session.Active,
+	})
 }
 
 // aggregateToDailyUsage adds session time to daily usage totals
@@ -287,20 +290,12 @@ func (t *Tracker) aggregateToDailyUsage(session *Session) error {
 	// Get the date for this session (based on when it started)
 	date := session.StartedAt.Format("2006-01-02")
 
-	// Insert or update daily usage
-	_, err := t.db.Exec(`
-		INSERT INTO daily_usage (date, device_id, limit_id, total_seconds)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(date, device_id, limit_id)
-		DO UPDATE SET total_seconds = total_seconds + excluded.total_seconds
-	`, date, session.DeviceID, session.LimitID, session.AccumulatedSeconds)
-
-	if err != nil {
+	if err := t.usageStore.IncrementDailyUsage(context.Background(), date, session.DeviceID, session.LimitID, session.AccumulatedSeconds); err != nil {
 		return fmt.Errorf("failed to aggregate daily usage: %w", err)
 	}
 
 	// Record usage minutes metric (get category from limit ID if possible)
-	// For now, use "unknown" category - could be enhanced to query the database for category
+	// For now, use "unknown" category - could be enhanced to query storage for category
 	minutesUsed := float64(session.AccumulatedSeconds) / 60.0
 	metrics.UsageMinutesConsumed.WithLabelValues(session.DeviceID, "session").Add(minutesUsed)
 
@@ -312,6 +307,10 @@ func (t *Tracker) aggregateToDailyUsage(session *Session) error {
 		Msg("Aggregated session to daily usage")
 
 	return nil
+}
+
+func errorsIsNotFound(err error) bool {
+	return errors.Is(err, storage.ErrNotFound)
 }
 
 // cleanupInactiveSessions periodically checks for and finalizes inactive sessions
