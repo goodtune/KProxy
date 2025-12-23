@@ -1,4 +1,8 @@
-# KProxy
+<div align="center">
+
+![KProxy](../assets/kproxy-text-logo.jpg)
+
+</div>
 
 **Kids Proxy** - A transparent HTTP/HTTPS interception proxy with embedded DNS server for home network parental controls.
 
