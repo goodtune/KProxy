@@ -93,10 +93,15 @@ type ResponseConfig struct {
 
 // AdminConfig defines admin interface settings
 type AdminConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Port            int    `mapstructure:"port"`
+	BindAddress     string `mapstructure:"bind_address"`
 	InitialUsername string `mapstructure:"initial_username"`
 	InitialPassword string `mapstructure:"initial_password"`
+	JWTSecret       string `mapstructure:"jwt_secret"`
 	SessionTimeout  string `mapstructure:"session_timeout"`
 	RateLimit       int    `mapstructure:"rate_limit"`
+	RateLimitWindow string `mapstructure:"rate_limit_window"`
 }
 
 // Load loads configuration from file and environment variables

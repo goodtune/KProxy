@@ -1,5 +1,4 @@
-# KProxy Production Configuration
-# This is the default configuration installed with KProxy packages
+# KProxy Configuration Example
 
 server:
   # DNS server (primary entry point for clients)
@@ -36,7 +35,6 @@ dns:
   upstream_timeout: "5s"
 
   # Global bypass domains (always bypass, never intercept)
-  # These are critical for system operation and certificate validation
   global_bypass:
     - "ocsp.*.com"        # Certificate validation
     - "crl.*.com"
@@ -46,8 +44,6 @@ dns:
 
 tls:
   # CA certificate and key paths
-  # IMPORTANT: Generate CA certificates before starting kproxy
-  # Run: sudo /usr/local/bin/kproxy-generate-ca
   ca_cert: "/etc/kproxy/ca/root-ca.crt"
   ca_key: "/etc/kproxy/ca/root-ca.key"
 
@@ -94,25 +90,33 @@ response_modification:
   # Enable/disable timer injection
   enabled: true
 
-  # Sites where injection is disabled (security-sensitive sites)
+  # Sites where injection is disabled
   disabled_hosts:
     - "*.bank.com"
-    - "*.bank.*"
     - "secure.*"
-    - "banking.*"
-    - "*.paypal.com"
 
   # Content types to modify
   allowed_content_types:
     - "text/html"
 
 admin:
-  # Initial admin credentials (CHANGE THESE AFTER FIRST LOGIN!)
+  # Enable/disable admin interface
+  enabled: true
+
+  # Admin interface port and bind address
+  port: 8443
+  bind_address: "0.0.0.0"
+
+  # Initial admin credentials (change on first login!)
   initial_username: "admin"
   initial_password: "changeme"
+
+  # JWT secret for session tokens (CHANGE THIS!)
+  jwt_secret: "change-this-to-a-random-secret-key"
 
   # Session settings
   session_timeout: "24h"
 
   # Rate limiting
-  rate_limit: 100  # requests per minute
+  rate_limit: 100  # requests per window
+  rate_limit_window: "1m"
