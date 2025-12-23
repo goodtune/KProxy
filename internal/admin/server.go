@@ -4,6 +4,8 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"html/template"
+	"io/fs"
 	"net/http"
 	"time"
 
@@ -35,6 +37,7 @@ type Server struct {
 	rateLimiter   *RateLimiter
 	server        *http.Server
 	router        *mux.Router
+	templates     *template.Template
 	logger        zerolog.Logger
 }
 
@@ -60,6 +63,13 @@ func NewServer(cfg Config, store storage.Store, policyEngine *policy.Engine, log
 	// Create router
 	router := mux.NewRouter()
 
+	// Parse templates
+	tmpl, err := template.ParseFS(staticFS, "static/templates/*.html")
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to parse templates")
+		tmpl = template.New("fallback")
+	}
+
 	s := &Server{
 		config:       cfg,
 		store:        store,
@@ -67,6 +77,7 @@ func NewServer(cfg Config, store storage.Store, policyEngine *policy.Engine, log
 		auth:         auth,
 		rateLimiter:  rateLimiter,
 		router:       router,
+		templates:    tmpl,
 		logger:       logger.With().Str("component", "admin").Logger(),
 	}
 
@@ -97,7 +108,14 @@ func (s *Server) setupRoutes() {
 
 	// Public routes (no auth required)
 	s.router.HandleFunc("/api/auth/login", s.handleLogin).Methods("POST", "OPTIONS")
+	s.router.HandleFunc("/admin/login", s.handleLoginPage).Methods("GET")
 	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
+
+	// Static files
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err == nil {
+		s.router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	}
 
 	// Authenticated routes
 	authRouter := s.router.PathPrefix("/").Subrouter()
@@ -108,10 +126,7 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/api/auth/me", s.handleMe).Methods("GET")
 	authRouter.HandleFunc("/api/auth/change-password", s.handleChangePassword).Methods("POST")
 
-	// Static files (will be implemented later with go:embed)
-	// authRouter.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-
-	// Web UI routes (will be implemented in Phase 5.2)
+	// Web UI routes
 	authRouter.HandleFunc("/", s.handleDashboard).Methods("GET")
 	authRouter.HandleFunc("/admin/dashboard", s.handleDashboard).Methods("GET")
 
@@ -162,11 +177,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","active_sessions":%d}`, s.auth.GetActiveSessions())
 }
 
+func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title": "Login",
+	}
+	if err := s.templates.ExecuteTemplate(w, "login.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render login template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	// Will be implemented in Phase 5.2
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "<html><body><h1>KProxy Admin Dashboard</h1><p>Coming soon...</p></body></html>")
+	data := map[string]interface{}{
+		"Title": "Dashboard",
+	}
+	if err := s.templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render dashboard template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
 
 // Helper function to write JSON responses.
