@@ -24,7 +24,7 @@ KProxy consists of several integrated components:
 2. **HTTP/HTTPS Proxy** - Intercepts web traffic with TLS termination
 3. **Policy Engine** - Evaluates requests against access rules
 4. **Certificate Authority** - Generates certificates for HTTPS interception
-5. **Database** - SQLite storage for configurations and logs
+5. **Storage** - Embedded KV store for configurations and logs
 6. **Metrics Server** - Prometheus metrics endpoint
 
 ## Quick Start
@@ -33,7 +33,7 @@ KProxy consists of several integrated components:
 
 - Go 1.22 or later
 - OpenSSL (for CA generation)
-- SQLite support
+- Embedded KV store (BoltDB)
 
 ### Installation
 
@@ -60,7 +60,7 @@ KProxy consists of several integrated components:
    # Edit /etc/kproxy/config.yaml as needed
    ```
 
-5. **Create database directory:**
+5. **Create storage directory:**
    ```bash
    sudo mkdir -p /var/lib/kproxy
    ```
@@ -150,52 +150,16 @@ tls:
 
 ### Managing Devices
 
-Devices are stored in the SQLite database. You can manage them via SQL or the admin API (future feature).
-
-**Add a device:**
-```sql
-INSERT INTO devices (id, name, identifiers, profile_id, active)
-VALUES (
-  'child-laptop',
-  'Child A Laptop',
-  '["192.168.1.100", "aa:bb:cc:dd:ee:ff"]',
-  'child-profile',
-  1
-);
-```
+Devices are stored in the embedded KV store. You can manage them via the admin API (future feature).
 
 ### Creating Access Profiles
 
-**Create a profile:**
-```sql
-INSERT INTO profiles (id, name, default_allow)
-VALUES ('child-profile', 'Child A Profile', 0);
-```
-
-**Add rules:**
-```sql
--- Allow YouTube
-INSERT INTO rules (id, profile_id, domain, action, priority, category)
-VALUES ('allow-youtube', 'child-profile', 'youtube.com', 'ALLOW', 10, 'video');
-
--- Block gaming sites
-INSERT INTO rules (id, profile_id, domain, action, priority, category)
-VALUES ('block-gaming', 'child-profile', '*.gaming.com', 'BLOCK', 5, 'gaming');
-```
+Profiles and rules are stored alongside devices in the embedded KV store. The admin UI will provide CRUD tooling for these entities in a future release.
 
 ### DNS Bypass Rules
 
 Configure domains that should bypass the proxy entirely:
-
-```sql
-INSERT INTO bypass_rules (id, domain, reason, enabled)
-VALUES (
-  'bypass-banking',
-  '*.bankofamerica.com',
-  'Banking',
-  1
-);
-```
+Bypass rules are stored in the embedded KV store and will be exposed via the admin UI once available.
 
 ## Monitoring
 
@@ -216,24 +180,7 @@ http://kproxy-ip:9090/metrics
 
 ### Logs
 
-**DNS Logs:**
-```sql
-SELECT * FROM dns_logs ORDER BY timestamp DESC LIMIT 100;
-```
-
-**HTTP Request Logs:**
-```sql
-SELECT * FROM request_logs ORDER BY timestamp DESC LIMIT 100;
-```
-
-**Blocked Requests:**
-```sql
-SELECT device_name, host, reason, COUNT(*) as count
-FROM request_logs
-WHERE action = 'BLOCK'
-GROUP BY device_name, host, reason
-ORDER BY count DESC;
-```
+Log data is recorded into the storage backend. Admin endpoints for querying and filtering logs will be introduced alongside the UI.
 
 ## Deployment
 
@@ -301,7 +248,7 @@ services:
 ## Security Considerations
 
 1. **CA Private Keys** - Keep CA private keys secure with 600 permissions
-2. **Database Encryption** - Consider encrypting the SQLite database
+2. **Storage Encryption** - Consider encrypting the storage file
 3. **Log Retention** - Implement appropriate retention policies
 4. **Network Security** - Restrict admin interface access
 5. **Regular Updates** - Keep KProxy and dependencies updated
@@ -332,7 +279,7 @@ kproxy/
 ├── internal/             # Internal packages
 │   ├── ca/              # Certificate authority
 │   ├── config/          # Configuration
-│   ├── database/        # Database layer
+│   ├── storage/         # Storage layer
 │   ├── dns/             # DNS server
 │   ├── metrics/         # Prometheus metrics
 │   ├── policy/          # Policy engine
@@ -359,7 +306,7 @@ kproxy/
 
 ### Devices Not Identified
 
-- Add device identifiers (IP/MAC) to database
+- Add device identifiers (IP/MAC) to storage
 - Enable MAC address identification in config
 - Check logs for device identification errors
 

@@ -10,11 +10,12 @@ import (
 
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/config"
-	"github.com/goodtune/kproxy/internal/database"
 	"github.com/goodtune/kproxy/internal/dns"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/proxy"
+	"github.com/goodtune/kproxy/internal/storage"
+	"github.com/goodtune/kproxy/internal/storage/bolt"
 	"github.com/goodtune/kproxy/internal/usage"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -50,18 +51,18 @@ func main() {
 		Str("config", *configPath).
 		Msg("Starting KProxy")
 
-	// Initialize database
-	db, err := database.New(cfg.Database.Path)
+	// Initialize storage
+	store, err := openStorage(cfg.Storage)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to initialize database")
+		logger.Fatal().Err(err).Msg("Failed to initialize storage")
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			logger.Error().Err(err).Msg("Failed to close database")
+		if err := store.Close(); err != nil {
+			logger.Error().Err(err).Msg("Failed to close storage")
 		}
 	}()
 
-	logger.Info().Str("path", cfg.Database.Path).Msg("Database initialized")
+	logger.Info().Str("path", cfg.Storage.Path).Str("type", cfg.Storage.Type).Msg("Storage initialized")
 
 	// Initialize Certificate Authority
 	caConfig := ca.Config{
@@ -88,7 +89,7 @@ func main() {
 	}
 
 	policyEngine, err := policy.NewEngine(
-		db,
+		store,
 		cfg.DNS.GlobalBypass,
 		defaultAction,
 		cfg.Policy.UseMACAddress,
@@ -101,7 +102,7 @@ func main() {
 
 	// Initialize Usage Tracker
 	usageTracker := usage.NewTracker(
-		db,
+		store.Usage(),
 		usage.Config{
 			InactivityTimeout:  parseDuration(cfg.Usage.InactivityTimeout, 2*time.Minute),
 			MinSessionDuration: parseDuration(cfg.Usage.MinSessionDuration, 10*time.Second),
@@ -116,7 +117,7 @@ func main() {
 
 	// Initialize Reset Scheduler
 	resetScheduler, err := usage.NewResetScheduler(
-		db,
+		store.Usage(),
 		cfg.Usage.DailyResetTime,
 		logger,
 	)
@@ -140,7 +141,7 @@ func main() {
 		Timeout:      parseDuration(cfg.DNS.UpstreamTimeout, 5*time.Second),
 	}
 
-	dnsServer, err := dns.NewServer(dnsConfig, policyEngine, db, logger)
+	dnsServer, err := dns.NewServer(dnsConfig, policyEngine, store.Logs(), logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize DNS Server")
 	}
@@ -164,7 +165,7 @@ func main() {
 		proxyConfig,
 		policyEngine,
 		certificateAuthority,
-		db,
+		store.Logs(),
 		logger,
 	)
 
@@ -220,6 +221,20 @@ func main() {
 	}
 
 	logger.Info().Msg("KProxy stopped")
+}
+
+func openStorage(cfg config.StorageConfig) (storage.Store, error) {
+	storageType := cfg.Type
+	if storageType == "" {
+		storageType = "bolt"
+	}
+
+	switch storageType {
+	case "bolt", "bbolt":
+		return bolt.Open(cfg.Path)
+	default:
+		return nil, fmt.Errorf("unsupported storage type: %s", storageType)
+	}
 }
 
 // setupLogger configures the logger based on configuration

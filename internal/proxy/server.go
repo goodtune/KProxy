@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/ca"
-	"github.com/goodtune/kproxy/internal/database"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
+	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
 
@@ -23,7 +23,7 @@ type Server struct {
 	httpsServer  *http.Server
 	policyEngine *policy.Engine
 	ca           *ca.CA
-	db           *database.DB
+	logStore     storage.LogStore
 	logger       zerolog.Logger
 	adminDomain  string
 }
@@ -40,13 +40,13 @@ func NewServer(
 	config Config,
 	policyEngine *policy.Engine,
 	ca *ca.CA,
-	db *database.DB,
+	logStore storage.LogStore,
 	logger zerolog.Logger,
 ) *Server {
 	s := &Server{
 		policyEngine: policyEngine,
 		ca:           ca,
-		db:           db,
+		logStore:     logStore,
 		logger:       logger.With().Str("component", "proxy").Logger(),
 		adminDomain:  config.AdminDomain,
 	}
@@ -420,20 +420,23 @@ func (s *Server) logRequest(req *policy.ProxyRequest, decision *policy.PolicyDec
 		deviceName = device.Name
 	}
 
-	encrypted := 0
-	if req.Encrypted {
-		encrypted = 1
-	}
-
-	_, err := s.db.Exec(`
-		INSERT INTO request_logs (
-			device_id, device_name, client_ip, method, host, path, user_agent,
-			status_code, response_size, duration_ms, action, matched_rule_id,
-			reason, category, encrypted
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, deviceID, deviceName, req.ClientIP.String(), req.Method, req.Host, req.Path,
-		req.UserAgent, statusCode, responseSize, durationMS, string(decision.Action),
-		decision.MatchedRuleID, decision.Reason, decision.Category, encrypted)
+	err := s.logStore.AddRequestLog(context.Background(), storage.RequestLog{
+		DeviceID:     deviceID,
+		DeviceName:   deviceName,
+		ClientIP:     req.ClientIP.String(),
+		Method:       req.Method,
+		Host:         req.Host,
+		Path:         req.Path,
+		UserAgent:    req.UserAgent,
+		StatusCode:   statusCode,
+		ResponseSize: responseSize,
+		DurationMS:   durationMS,
+		Action:       storage.Action(decision.Action),
+		MatchedRule:  decision.MatchedRuleID,
+		Reason:       decision.Reason,
+		Category:     decision.Category,
+		Encrypted:    req.Encrypted,
+	})
 
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to log request")

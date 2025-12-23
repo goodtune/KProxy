@@ -1,18 +1,18 @@
 package policy
 
 import (
-	"database/sql"
-	"encoding/json"
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/goodtune/kproxy/internal/database"
+	"github.com/goodtune/kproxy/internal/storage"
 )
 
 // UsageTracker interface for usage tracking
@@ -30,7 +30,12 @@ type UsageStats struct {
 
 // Engine handles policy evaluation and enforcement
 type Engine struct {
-	db            *database.DB
+	deviceStore   storage.DeviceStore
+	profileStore  storage.ProfileStore
+	ruleStore     storage.RuleStore
+	timeRuleStore storage.TimeRuleStore
+	limitStore    storage.UsageLimitStore
+	bypassStore   storage.BypassRuleStore
 	devices       map[string]*Device
 	devicesByMAC  map[string]*Device
 	profiles      map[string]*Profile
@@ -43,9 +48,14 @@ type Engine struct {
 }
 
 // NewEngine creates a new policy engine
-func NewEngine(db *database.DB, globalBypass []string, defaultAction string, useMACAddress bool) (*Engine, error) {
+func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool) (*Engine, error) {
 	e := &Engine{
-		db:            db,
+		deviceStore:   store.Devices(),
+		profileStore:  store.Profiles(),
+		ruleStore:     store.Rules(),
+		timeRuleStore: store.TimeRules(),
+		limitStore:    store.UsageLimits(),
+		bypassStore:   store.BypassRules(),
 		devices:       make(map[string]*Device),
 		devicesByMAC:  make(map[string]*Device),
 		profiles:      make(map[string]*Profile),
@@ -72,7 +82,7 @@ func NewEngine(db *database.DB, globalBypass []string, defaultAction string, use
 	return e, nil
 }
 
-// Reload reloads all policy data from the database
+// Reload reloads all policy data from storage
 func (e *Engine) Reload() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -95,44 +105,26 @@ func (e *Engine) Reload() error {
 	return nil
 }
 
-// loadDevices loads all devices from the database
+// loadDevices loads all devices from storage
 func (e *Engine) loadDevices() error {
-	rows, err := e.db.Query(`
-		SELECT id, name, identifiers, profile_id, active, created_at, updated_at
-		FROM devices
-		WHERE active = 1
-	`)
+	ctx := context.Background()
+	storedDevices, err := e.deviceStore.ListActive(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
 
 	devices := make(map[string]*Device)
 	devicesByMAC := make(map[string]*Device)
 
-	for rows.Next() {
-		var device Device
-		var identifiersJSON string
-		var active int
-
-		err := rows.Scan(
-			&device.ID,
-			&device.Name,
-			&identifiersJSON,
-			&device.ProfileID,
-			&active,
-			&device.CreatedAt,
-			&device.UpdatedAt,
-		)
-		if err != nil {
-			return err
-		}
-
-		device.Active = active == 1
-
-		// Parse identifiers
-		if err := json.Unmarshal([]byte(identifiersJSON), &device.Identifiers); err != nil {
-			return fmt.Errorf("failed to parse identifiers for device %s: %w", device.ID, err)
+	for _, storedDevice := range storedDevices {
+		device := Device{
+			ID:          storedDevice.ID,
+			Name:        storedDevice.Name,
+			Identifiers: storedDevice.Identifiers,
+			ProfileID:   storedDevice.ProfileID,
+			Active:      storedDevice.Active,
+			CreatedAt:   storedDevice.CreatedAt,
+			UpdatedAt:   storedDevice.UpdatedAt,
 		}
 
 		devices[device.ID] = &device
@@ -153,33 +145,22 @@ func (e *Engine) loadDevices() error {
 
 // loadProfiles loads all profiles with their rules
 func (e *Engine) loadProfiles() error {
-	rows, err := e.db.Query(`
-		SELECT id, name, default_allow, created_at, updated_at
-		FROM profiles
-	`)
+	ctx := context.Background()
+	storedProfiles, err := e.profileStore.List(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
 
 	profiles := make(map[string]*Profile)
 
-	for rows.Next() {
-		var profile Profile
-		var defaultAllow int
-
-		err := rows.Scan(
-			&profile.ID,
-			&profile.Name,
-			&defaultAllow,
-			&profile.CreatedAt,
-			&profile.UpdatedAt,
-		)
-		if err != nil {
-			return err
+	for _, storedProfile := range storedProfiles {
+		profile := Profile{
+			ID:           storedProfile.ID,
+			Name:         storedProfile.Name,
+			DefaultAllow: storedProfile.DefaultAllow,
+			CreatedAt:    storedProfile.CreatedAt,
+			UpdatedAt:    storedProfile.UpdatedAt,
 		}
-
-		profile.DefaultAllow = defaultAllow == 1
 
 		// Load rules for this profile
 		if err := e.loadProfileRules(&profile); err != nil {
@@ -205,47 +186,28 @@ func (e *Engine) loadProfiles() error {
 
 // loadProfileRules loads rules for a specific profile
 func (e *Engine) loadProfileRules(profile *Profile) error {
-	rows, err := e.db.Query(`
-		SELECT id, domain, paths, action, priority, category, inject_timer
-		FROM rules
-		WHERE profile_id = ?
-		ORDER BY priority DESC
-	`, profile.ID)
+	ctx := context.Background()
+	storedRules, err := e.ruleStore.ListByProfile(ctx, profile.ID)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
 
-	var rules []Rule
-	for rows.Next() {
-		var rule Rule
-		var pathsJSON sql.NullString
-		var injectTimer int
-
-		err := rows.Scan(
-			&rule.ID,
-			&rule.Domain,
-			&pathsJSON,
-			&rule.Action,
-			&rule.Priority,
-			&rule.Category,
-			&injectTimer,
-		)
-		if err != nil {
-			return err
-		}
-
-		rule.InjectTimer = injectTimer == 1
-
-		// Parse paths
-		if pathsJSON.Valid && pathsJSON.String != "" {
-			if err := json.Unmarshal([]byte(pathsJSON.String), &rule.Paths); err != nil {
-				return fmt.Errorf("failed to parse paths for rule %s: %w", rule.ID, err)
-			}
-		}
-
-		rules = append(rules, rule)
+	rules := make([]Rule, 0, len(storedRules))
+	for _, storedRule := range storedRules {
+		rules = append(rules, Rule{
+			ID:          storedRule.ID,
+			Domain:      storedRule.Domain,
+			Paths:       storedRule.Paths,
+			Action:      Action(storedRule.Action),
+			Priority:    storedRule.Priority,
+			Category:    storedRule.Category,
+			InjectTimer: storedRule.InjectTimer,
+		})
 	}
+
+	sort.Slice(rules, func(i, j int) bool {
+		return rules[i].Priority > rules[j].Priority
+	})
 
 	profile.Rules = rules
 	return nil
@@ -253,45 +215,21 @@ func (e *Engine) loadProfileRules(profile *Profile) error {
 
 // loadProfileTimeRules loads time rules for a specific profile
 func (e *Engine) loadProfileTimeRules(profile *Profile) error {
-	rows, err := e.db.Query(`
-		SELECT id, days_of_week, start_time, end_time, rule_ids
-		FROM time_rules
-		WHERE profile_id = ?
-	`, profile.ID)
+	ctx := context.Background()
+	storedRules, err := e.timeRuleStore.ListByProfile(ctx, profile.ID)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
 
-	var timeRules []TimeRule
-	for rows.Next() {
-		var timeRule TimeRule
-		var daysJSON, ruleIDsJSON string
-
-		err := rows.Scan(
-			&timeRule.ID,
-			&daysJSON,
-			&timeRule.StartTime,
-			&timeRule.EndTime,
-			&ruleIDsJSON,
-		)
-		if err != nil {
-			return err
-		}
-
-		// Parse days of week
-		if err := json.Unmarshal([]byte(daysJSON), &timeRule.DaysOfWeek); err != nil {
-			return fmt.Errorf("failed to parse days_of_week for time rule %s: %w", timeRule.ID, err)
-		}
-
-		// Parse rule IDs
-		if ruleIDsJSON != "" {
-			if err := json.Unmarshal([]byte(ruleIDsJSON), &timeRule.RuleIDs); err != nil {
-				return fmt.Errorf("failed to parse rule_ids for time rule %s: %w", timeRule.ID, err)
-			}
-		}
-
-		timeRules = append(timeRules, timeRule)
+	timeRules := make([]TimeRule, 0, len(storedRules))
+	for _, storedRule := range storedRules {
+		timeRules = append(timeRules, TimeRule{
+			ID:         storedRule.ID,
+			DaysOfWeek: storedRule.DaysOfWeek,
+			StartTime:  storedRule.StartTime,
+			EndTime:    storedRule.EndTime,
+			RuleIDs:    storedRule.RuleIDs,
+		})
 	}
 
 	profile.TimeRules = timeRules
@@ -300,44 +238,22 @@ func (e *Engine) loadProfileTimeRules(profile *Profile) error {
 
 // loadProfileUsageLimits loads usage limits for a specific profile
 func (e *Engine) loadProfileUsageLimits(profile *Profile) error {
-	rows, err := e.db.Query(`
-		SELECT id, category, domains, daily_minutes, reset_time, inject_timer
-		FROM usage_limits
-		WHERE profile_id = ?
-	`, profile.ID)
+	ctx := context.Background()
+	storedLimits, err := e.limitStore.ListByProfile(ctx, profile.ID)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
 
-	var usageLimits []UsageLimit
-	for rows.Next() {
-		var limit UsageLimit
-		var domainsJSON sql.NullString
-		var injectTimer int
-
-		err := rows.Scan(
-			&limit.ID,
-			&limit.Category,
-			&domainsJSON,
-			&limit.DailyMinutes,
-			&limit.ResetTime,
-			&injectTimer,
-		)
-		if err != nil {
-			return err
-		}
-
-		limit.InjectTimer = injectTimer == 1
-
-		// Parse domains
-		if domainsJSON.Valid && domainsJSON.String != "" {
-			if err := json.Unmarshal([]byte(domainsJSON.String), &limit.Domains); err != nil {
-				return fmt.Errorf("failed to parse domains for usage limit %s: %w", limit.ID, err)
-			}
-		}
-
-		usageLimits = append(usageLimits, limit)
+	usageLimits := make([]UsageLimit, 0, len(storedLimits))
+	for _, storedLimit := range storedLimits {
+		usageLimits = append(usageLimits, UsageLimit{
+			ID:           storedLimit.ID,
+			Category:     storedLimit.Category,
+			Domains:      storedLimit.Domains,
+			DailyMinutes: storedLimit.DailyMinutes,
+			ResetTime:    storedLimit.ResetTime,
+			InjectTimer:  storedLimit.InjectTimer,
+		})
 	}
 
 	profile.UsageLimits = usageLimits
@@ -346,42 +262,21 @@ func (e *Engine) loadProfileUsageLimits(profile *Profile) error {
 
 // loadBypassRules loads all bypass rules
 func (e *Engine) loadBypassRules() error {
-	rows, err := e.db.Query(`
-		SELECT id, domain, reason, enabled, device_ids
-		FROM bypass_rules
-		WHERE enabled = 1
-	`)
+	ctx := context.Background()
+	storedRules, err := e.bypassStore.ListEnabled(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
 
-	var bypassRules []*BypassRule
-	for rows.Next() {
-		var rule BypassRule
-		var deviceIDsJSON sql.NullString
-		var enabled int
-
-		err := rows.Scan(
-			&rule.ID,
-			&rule.Domain,
-			&rule.Reason,
-			&enabled,
-			&deviceIDsJSON,
-		)
-		if err != nil {
-			return err
+	bypassRules := make([]*BypassRule, 0, len(storedRules))
+	for _, storedRule := range storedRules {
+		rule := BypassRule{
+			ID:        storedRule.ID,
+			Domain:    storedRule.Domain,
+			Reason:    storedRule.Reason,
+			Enabled:   storedRule.Enabled,
+			DeviceIDs: storedRule.DeviceIDs,
 		}
-
-		rule.Enabled = enabled == 1
-
-		// Parse device IDs
-		if deviceIDsJSON.Valid && deviceIDsJSON.String != "" {
-			if err := json.Unmarshal([]byte(deviceIDsJSON.String), &rule.DeviceIDs); err != nil {
-				return fmt.Errorf("failed to parse device_ids for bypass rule %s: %w", rule.ID, err)
-			}
-		}
-
 		bypassRules = append(bypassRules, &rule)
 	}
 
