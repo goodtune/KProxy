@@ -17,15 +17,6 @@ SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 SCREENSHOT_DIR.mkdir(exist_ok=True)
 
 
-@pytest.fixture(scope="session")
-def browser_context_args(browser_context_args):
-    """Configure browser to accept self-signed certificates."""
-    return {
-        **browser_context_args,
-        "ignore_https_errors": True,
-    }
-
-
 def take_screenshot(page: Page, name: str):
     """Helper to take and save a screenshot."""
     screenshot_path = SCREENSHOT_DIR / f"{name}.png"
