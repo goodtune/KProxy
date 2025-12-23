@@ -8,7 +8,7 @@ from playwright.sync_api import Page, expect
 
 
 # Configuration
-ADMIN_URL = "https://localhost:8444"
+ADMIN_URL = os.environ.get("ADMIN_URL", "https://localhost:8444")
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "changeme"
 

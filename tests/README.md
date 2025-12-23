@@ -16,7 +16,26 @@ Playwright-based end-to-end tests for the KProxy admin interface using Python.
 
 ## Running Tests
 
-Make sure KProxy is running locally with the admin interface enabled on `https://localhost:8443`.
+### Preferred: Isolated container runtime
+
+Use `tox` with `tox-docker` to build the kproxy binary, run it inside a disposable container with a pristine data directory, and execute the Playwright suite against the exposed admin port:
+
+```bash
+tox -e playwright
+```
+
+`tox-docker` exposes the following environment variables with host/port pairs for services inside the container:
+
+- `APP_HTTP_PORT` – HTTP proxy port (8080/tcp)
+- `APP_HTTPS_PORT` – HTTPS proxy port (9443/tcp)
+- `APP_DNS_PORT` – DNS/TCP testing port (1053/tcp)
+- `ADMIN_HTTPS_PORT` – Admin interface HTTPS port (8444/tcp)
+
+Tests automatically read `ADMIN_HTTPS_PORT` to construct the correct base URL, so no manual configuration is needed.
+
+### Manual host runtime
+
+Make sure KProxy is running locally with the admin interface enabled on `https://localhost:8444`.
 
 ### Run all tests:
 ```bash

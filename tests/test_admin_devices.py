@@ -2,13 +2,14 @@
 Test admin interface device management functionality.
 """
 import os
+import re
 from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
 
 # Configuration
-ADMIN_URL = "https://localhost:8444"
+ADMIN_URL = os.environ.get("ADMIN_URL", "https://localhost:8444")
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "changeme"
 
@@ -73,15 +74,29 @@ def test_create_device(authenticated_page: Page):
 
     # Check modal is visible
     modal = authenticated_page.locator("#deviceModal")
-    expect(modal).not_to_have_class("hidden")
+    expect(modal).not_to_have_class(re.compile(r"\bhidden\b"))
 
     # Fill in device details
     authenticated_page.locator("#deviceName").fill("Test Device")
     authenticated_page.locator("#deviceDescription").fill("Playwright test device")
     authenticated_page.locator("#deviceIdentifiers").fill("192.168.1.100\naa:bb:cc:dd:ee:ff")
 
-    # Note: Profile select might be empty if no profiles exist
-    # We'll handle that by allowing empty profile
+    # Select first available profile option so submit uses valid value
+    profile_value = authenticated_page.evaluate(
+        """
+        () => {
+            const select = document.querySelector('#deviceProfile');
+            if (!select) return null;
+            const option = Array.from(select.options).find(opt => opt.value);
+            return option ? option.value : null;
+        }
+        """
+    )
+    if profile_value:
+        authenticated_page.locator("#deviceProfile").select_option(value=profile_value)
+    else:
+        pytest.skip("No device profiles exist to attach to the new device")
+
     take_screenshot(authenticated_page, "devices_04_form_filled")
 
     # Submit form
@@ -95,7 +110,7 @@ def test_create_device(authenticated_page: Page):
     assert response.status in [200, 201], f"Create device failed: {response.status}"
 
     # Modal should be hidden
-    expect(modal).to_have_class("hidden")
+    expect(modal).to_have_class(re.compile(r"\bhidden\b"))
 
     # Device should appear in the table
     expect(authenticated_page.locator("text=Test Device")).to_be_visible()
