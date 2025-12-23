@@ -127,6 +127,207 @@ func (s *logStore) DeleteDNSLogsBefore(ctx context.Context, cutoff time.Time) (i
 	})
 }
 
+func (s *logStore) QueryRequestLogs(ctx context.Context, filter storage.RequestLogFilter) ([]storage.RequestLog, error) {
+	var logs []storage.RequestLog
+
+	return logs, s.db.View(func(tx *bbolt.Tx) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		bucket := tx.Bucket([]byte(bucketLogsHTTP))
+		if bucket == nil {
+			return nil
+		}
+
+		// Collect IDs from index if filtering
+		var logIDs []string
+		if filter.DeviceID != "" || filter.Domain != "" || filter.Action != "" {
+			logIDs = s.getRequestLogIDsFromIndex(tx, filter)
+		}
+
+		// Iterate logs
+		c := bucket.Cursor()
+		count := 0
+		skipped := 0
+
+		for k, v := c.Last(); k != nil; k, v = c.Prev() { // Reverse order (newest first)
+			if filter.Limit > 0 && count >= filter.Limit {
+				break
+			}
+
+			var log storage.RequestLog
+			if err := unmarshal(v, &log); err != nil {
+				continue
+			}
+
+			// Apply filters
+			if filter.StartTime != nil && log.Timestamp.Before(*filter.StartTime) {
+				continue
+			}
+			if filter.EndTime != nil && log.Timestamp.After(*filter.EndTime) {
+				continue
+			}
+			if len(logIDs) > 0 && !contains(logIDs, log.ID) {
+				continue
+			}
+
+			// Apply offset
+			if skipped < filter.Offset {
+				skipped++
+				continue
+			}
+
+			logs = append(logs, log)
+			count++
+		}
+
+		return nil
+	})
+}
+
+func (s *logStore) QueryDNSLogs(ctx context.Context, filter storage.DNSLogFilter) ([]storage.DNSLog, error) {
+	var logs []storage.DNSLog
+
+	return logs, s.db.View(func(tx *bbolt.Tx) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		bucket := tx.Bucket([]byte(bucketLogsDNS))
+		if bucket == nil {
+			return nil
+		}
+
+		// Collect IDs from index if filtering
+		var logIDs []string
+		if filter.DeviceID != "" || filter.Domain != "" || filter.Action != "" {
+			logIDs = s.getDNSLogIDsFromIndex(tx, filter)
+		}
+
+		// Iterate logs
+		c := bucket.Cursor()
+		count := 0
+		skipped := 0
+
+		for k, v := c.Last(); k != nil; k, v = c.Prev() { // Reverse order (newest first)
+			if filter.Limit > 0 && count >= filter.Limit {
+				break
+			}
+
+			var log storage.DNSLog
+			if err := unmarshal(v, &log); err != nil {
+				continue
+			}
+
+			// Apply filters
+			if filter.StartTime != nil && log.Timestamp.Before(*filter.StartTime) {
+				continue
+			}
+			if filter.EndTime != nil && log.Timestamp.After(*filter.EndTime) {
+				continue
+			}
+			if len(logIDs) > 0 && !contains(logIDs, log.ID) {
+				continue
+			}
+
+			// Apply offset
+			if skipped < filter.Offset {
+				skipped++
+				continue
+			}
+
+			logs = append(logs, log)
+			count++
+		}
+
+		return nil
+	})
+}
+
+func (s *logStore) getRequestLogIDsFromIndex(tx *bbolt.Tx, filter storage.RequestLogFilter) []string {
+	var ids []string
+
+	indexBucket := tx.Bucket([]byte(bucketIndexesHTTP))
+	if indexBucket == nil {
+		return ids
+	}
+
+	// Use the most selective index
+	var bucket *bbolt.Bucket
+	if filter.DeviceID != "" {
+		bucket = indexBucket.Bucket([]byte(bucketIndexDevice))
+		if bucket != nil {
+			bucket = bucket.Bucket([]byte(normalizeIndexKey(filter.DeviceID)))
+		}
+	} else if filter.Domain != "" {
+		bucket = indexBucket.Bucket([]byte(bucketIndexDomain))
+		if bucket != nil {
+			bucket = bucket.Bucket([]byte(normalizeIndexKey(filter.Domain)))
+		}
+	} else if filter.Action != "" {
+		bucket = indexBucket.Bucket([]byte(bucketIndexAction))
+		if bucket != nil {
+			bucket = bucket.Bucket([]byte(normalizeIndexKey(string(filter.Action))))
+		}
+	}
+
+	if bucket != nil {
+		c := bucket.Cursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			ids = append(ids, string(k))
+		}
+	}
+
+	return ids
+}
+
+func (s *logStore) getDNSLogIDsFromIndex(tx *bbolt.Tx, filter storage.DNSLogFilter) []string {
+	var ids []string
+
+	indexBucket := tx.Bucket([]byte(bucketIndexesDNS))
+	if indexBucket == nil {
+		return ids
+	}
+
+	// Use the most selective index
+	var bucket *bbolt.Bucket
+	if filter.DeviceID != "" {
+		bucket = indexBucket.Bucket([]byte(bucketIndexDevice))
+		if bucket != nil {
+			bucket = bucket.Bucket([]byte(normalizeIndexKey(filter.DeviceID)))
+		}
+	} else if filter.Domain != "" {
+		bucket = indexBucket.Bucket([]byte(bucketIndexDomain))
+		if bucket != nil {
+			bucket = bucket.Bucket([]byte(normalizeIndexKey(filter.Domain)))
+		}
+	} else if filter.Action != "" {
+		bucket = indexBucket.Bucket([]byte(bucketIndexAction))
+		if bucket != nil {
+			bucket = bucket.Bucket([]byte(normalizeIndexKey(filter.Action)))
+		}
+	}
+
+	if bucket != nil {
+		c := bucket.Cursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			ids = append(ids, string(k))
+		}
+	}
+
+	return ids
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *logStore) addRequestIndexes(tx *bbolt.Tx, log storage.RequestLog) error {
 	deviceKey := normalizeIndexKey(log.DeviceID)
 	deviceBucket, err := ensureIndexBucket(tx, bucketIndexesHTTP, bucketIndexDevice, deviceKey)
