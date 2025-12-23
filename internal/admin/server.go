@@ -247,9 +247,10 @@ func (s *Server) Stop() error {
 // Placeholder handlers (will be fully implemented in Phase 5.2)
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"ok","active_sessions":%d}`, s.auth.GetActiveSessions())
+	WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status":          "ok",
+		"active_sessions": s.auth.GetActiveSessions(),
+	})
 }
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {

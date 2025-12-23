@@ -172,9 +172,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		Message: "Password changed successfully",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	WriteJSON(w, http.StatusOK, resp)
 
 	s.logger.Info().Str("username", username).Msg("User changed password")
 }
