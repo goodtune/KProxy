@@ -105,7 +105,7 @@ func (e *Engine) loadDevices() error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	devices := make(map[string]*Device)
 	devicesByMAC := make(map[string]*Device)
@@ -160,7 +160,7 @@ func (e *Engine) loadProfiles() error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	profiles := make(map[string]*Profile)
 
@@ -214,7 +214,7 @@ func (e *Engine) loadProfileRules(profile *Profile) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rules []Rule
 	for rows.Next() {
@@ -261,7 +261,7 @@ func (e *Engine) loadProfileTimeRules(profile *Profile) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var timeRules []TimeRule
 	for rows.Next() {
@@ -308,7 +308,7 @@ func (e *Engine) loadProfileUsageLimits(profile *Profile) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var usageLimits []UsageLimit
 	for rows.Next() {
@@ -354,7 +354,7 @@ func (e *Engine) loadBypassRules() error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var bypassRules []*BypassRule
 	for rows.Next() {
@@ -600,10 +600,8 @@ func (e *Engine) checkUsageLimits(device *Device, profile *Profile, host, catego
 			}
 		}
 
-		// Record activity for this limit
-		if err := e.usageTracker.RecordActivity(device.ID, limit.ID); err != nil {
-			// Log error but don't block on tracking errors
-		}
+		// Record activity for this limit (ignore errors to avoid blocking requests)
+		_ = e.usageTracker.RecordActivity(device.ID, limit.ID)
 
 		// Return decision with usage info for timer injection
 		return &PolicyDecision{

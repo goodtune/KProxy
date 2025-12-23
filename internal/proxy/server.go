@@ -284,7 +284,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request, isHTTPS boo
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Copy response headers
 	for key, values := range resp.Header {
@@ -300,7 +300,9 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request, isHTTPS boo
 	w.WriteHeader(resp.StatusCode)
 
 	// Copy response body
-	io.Copy(w, resp.Body)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to copy response body")
+	}
 }
 
 // handleBlock handles blocked requests
@@ -372,7 +374,9 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
-	w.Write([]byte(blockHTML))
+	if _, err := w.Write([]byte(blockHTML)); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to write block page")
+	}
 }
 
 // extractClientIP extracts the client IP from the request

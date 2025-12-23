@@ -25,7 +25,7 @@ func New(dbPath string) (*DB, error) {
 
 	// Run migrations
 	if err := runMigrations(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -67,13 +67,13 @@ func runMigrations(db *sql.DB) error {
 
 		// Execute migration
 		if _, err := tx.Exec(migration); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("failed to execute migration %d: %w", version, err)
 		}
 
 		// Record migration
 		if _, err := tx.Exec("INSERT INTO migrations (version) VALUES (?)", version); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("failed to record migration %d: %w", version, err)
 		}
 
