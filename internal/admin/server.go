@@ -209,8 +209,21 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/api/usage/today", sessionsHandler.GetTodayUsage).Methods("GET")
 	authRouter.HandleFunc("/api/usage/{date}", sessionsHandler.GetDailyUsage).Methods("GET")
 
+	// Statistics API routes (Phase 5.8)
+	statsHandler := api.NewStatsHandler(
+		s.store.Devices(),
+		s.store.Profiles(),
+		s.store.Rules(),
+		s.store.Logs(),
+		s.store.Usage(),
+		s.logger,
+	)
+	authRouter.HandleFunc("/api/stats/dashboard", statsHandler.GetDashboardStats).Methods("GET")
+	authRouter.HandleFunc("/api/stats/devices", statsHandler.GetDeviceStats).Methods("GET")
+	authRouter.HandleFunc("/api/stats/top-domains", statsHandler.GetTopDomains).Methods("GET")
+	authRouter.HandleFunc("/api/stats/blocked", statsHandler.GetBlockedStats).Methods("GET")
+
 	// API routes will be added in later phases:
-	// - Phase 5.8: Dashboard statistics
 	// - Phase 5.9: System control
 }
 
