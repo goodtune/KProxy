@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/goodtune/kproxy/internal/metrics"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog"
 )
 
@@ -35,13 +35,13 @@ type CA struct {
 
 // Config holds CA configuration
 type Config struct {
-	RootCertPath     string
-	RootKeyPath      string
-	IntermCertPath   string
-	IntermKeyPath    string
-	CertCacheSize    int
-	CertCacheTTL     time.Duration
-	CertValidity     time.Duration
+	RootCertPath   string
+	RootKeyPath    string
+	IntermCertPath string
+	IntermKeyPath  string
+	CertCacheSize  int
+	CertCacheTTL   time.Duration
+	CertValidity   time.Duration
 }
 
 // NewCA creates a new Certificate Authority

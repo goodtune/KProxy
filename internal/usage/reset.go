@@ -9,10 +9,10 @@ import (
 
 // ResetScheduler manages daily usage resets
 type ResetScheduler struct {
-	db         *database.DB
-	resetTime  time.Time // Time of day to reset (only hour and minute are used)
-	logger     zerolog.Logger
-	stopChan   chan struct{}
+	db        *database.DB
+	resetTime time.Time // Time of day to reset (only hour and minute are used)
+	logger    zerolog.Logger
+	stopChan  chan struct{}
 }
 
 // NewResetScheduler creates a new reset scheduler

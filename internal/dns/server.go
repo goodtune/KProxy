@@ -15,36 +15,36 @@ import (
 
 // Server handles DNS queries with intercept/bypass logic
 type Server struct {
-	proxyIP        net.IP
-	upstreamDNS    []string
-	policyEngine   *policy.Engine
-	logger         zerolog.Logger
-	db             *database.DB
+	proxyIP      net.IP
+	upstreamDNS  []string
+	policyEngine *policy.Engine
+	logger       zerolog.Logger
+	db           *database.DB
 
 	// TTL settings
-	interceptTTL   uint32
-	bypassTTLCap   uint32
-	blockTTL       uint32
+	interceptTTL uint32
+	bypassTTLCap uint32
+	blockTTL     uint32
 
 	// DNS client for upstream queries
-	client         *dns.Client
+	client *dns.Client
 
 	// Servers
-	udpServer      *dns.Server
-	tcpServer      *dns.Server
+	udpServer *dns.Server
+	tcpServer *dns.Server
 }
 
 // Config holds DNS server configuration
 type Config struct {
-	ListenAddr      string
-	ProxyIP         string
-	UpstreamDNS     []string
-	InterceptTTL    uint32
-	BypassTTLCap    uint32
-	BlockTTL        uint32
-	EnableTCP       bool
-	EnableUDP       bool
-	Timeout         time.Duration
+	ListenAddr   string
+	ProxyIP      string
+	UpstreamDNS  []string
+	InterceptTTL uint32
+	BypassTTLCap uint32
+	BlockTTL     uint32
+	EnableTCP    bool
+	EnableUDP    bool
+	Timeout      time.Duration
 }
 
 // NewServer creates a new DNS server

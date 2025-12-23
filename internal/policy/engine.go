@@ -30,16 +30,16 @@ type UsageStats struct {
 
 // Engine handles policy evaluation and enforcement
 type Engine struct {
-	db              *database.DB
-	devices         map[string]*Device
-	devicesByMAC    map[string]*Device
-	profiles        map[string]*Profile
-	bypassRules     []*BypassRule
-	globalBypass    []string
-	defaultAction   Action
-	useMACAddress   bool
-	usageTracker    UsageTracker
-	mu              sync.RWMutex
+	db            *database.DB
+	devices       map[string]*Device
+	devicesByMAC  map[string]*Device
+	profiles      map[string]*Profile
+	bypassRules   []*BypassRule
+	globalBypass  []string
+	defaultAction Action
+	useMACAddress bool
+	usageTracker  UsageTracker
+	mu            sync.RWMutex
 }
 
 // NewEngine creates a new policy engine
@@ -592,11 +592,11 @@ func (e *Engine) checkUsageLimits(device *Device, profile *Profile, host, catego
 		// Check if limit is exceeded
 		if stats.LimitExceeded {
 			return &PolicyDecision{
-				Action:        ActionBlock,
-				Reason:        fmt.Sprintf("daily usage limit exceeded: %v/%v used", stats.TodayUsage.Round(time.Minute), limitDuration),
-				BlockPage:     "usage_limit",
-				Category:      category,
-				UsageLimitID:  limit.ID,
+				Action:       ActionBlock,
+				Reason:       fmt.Sprintf("daily usage limit exceeded: %v/%v used", stats.TodayUsage.Round(time.Minute), limitDuration),
+				BlockPage:    "usage_limit",
+				Category:     category,
+				UsageLimitID: limit.ID,
 			}
 		}
 
@@ -607,12 +607,12 @@ func (e *Engine) checkUsageLimits(device *Device, profile *Profile, host, catego
 
 		// Return decision with usage info for timer injection
 		return &PolicyDecision{
-			Action:         ActionAllow,
-			Reason:         fmt.Sprintf("usage limit: %v remaining of %v", stats.RemainingToday.Round(time.Minute), limitDuration),
-			InjectTimer:    limit.InjectTimer,
-			TimeRemaining:  stats.RemainingToday,
-			Category:       category,
-			UsageLimitID:   limit.ID,
+			Action:        ActionAllow,
+			Reason:        fmt.Sprintf("usage limit: %v remaining of %v", stats.RemainingToday.Round(time.Minute), limitDuration),
+			InjectTimer:   limit.InjectTimer,
+			TimeRemaining: stats.RemainingToday,
+			Category:      category,
+			UsageLimitID:  limit.ID,
 		}
 	}
 

@@ -19,8 +19,8 @@ type DNSAction int
 
 const (
 	DNSActionIntercept DNSAction = iota // Return proxy IP, route through KProxy
-	DNSActionBypass                      // Forward to upstream, return real IP
-	DNSActionBlock                       // Return 0.0.0.0 / NXDOMAIN
+	DNSActionBypass                     // Forward to upstream, return real IP
+	DNSActionBlock                      // Return 0.0.0.0 / NXDOMAIN
 )
 
 // Device represents a monitored device
@@ -49,12 +49,12 @@ type Profile struct {
 // Rule defines domain/path filtering
 type Rule struct {
 	ID          string   `json:"id"`
-	Domain      string   `json:"domain"`        // "youtube.com", "*.google.com"
-	Paths       []string `json:"paths"`         // ["/watch", "/shorts"] or ["*"]
-	Action      Action   `json:"action"`        // ALLOW, BLOCK
-	Priority    int      `json:"priority"`      // Higher = evaluated first
-	Category    string   `json:"category"`      // "social", "gaming", "homework"
-	InjectTimer bool     `json:"inject_timer"`  // Show time remaining overlay
+	Domain      string   `json:"domain"`       // "youtube.com", "*.google.com"
+	Paths       []string `json:"paths"`        // ["/watch", "/shorts"] or ["*"]
+	Action      Action   `json:"action"`       // ALLOW, BLOCK
+	Priority    int      `json:"priority"`     // Higher = evaluated first
+	Category    string   `json:"category"`     // "social", "gaming", "homework"
+	InjectTimer bool     `json:"inject_timer"` // Show time remaining overlay
 }
 
 // TimeRule restricts access by time of day
@@ -69,32 +69,32 @@ type TimeRule struct {
 // UsageLimit tracks time spent on specific categories/domains
 type UsageLimit struct {
 	ID           string   `json:"id"`
-	Category     string   `json:"category"`       // "gaming", "social"
-	Domains      []string `json:"domains"`        // Specific domains if not using category
-	DailyMinutes int      `json:"daily_minutes"`  // 0 = unlimited
-	ResetTime    string   `json:"reset_time"`     // "00:00" local time
-	InjectTimer  bool     `json:"inject_timer"`   // Show countdown overlay
+	Category     string   `json:"category"`      // "gaming", "social"
+	Domains      []string `json:"domains"`       // Specific domains if not using category
+	DailyMinutes int      `json:"daily_minutes"` // 0 = unlimited
+	ResetTime    string   `json:"reset_time"`    // "00:00" local time
+	InjectTimer  bool     `json:"inject_timer"`  // Show countdown overlay
 }
 
 // BypassRule defines domains that should bypass the proxy
 type BypassRule struct {
 	ID        string   `json:"id"`
-	Domain    string   `json:"domain"`     // "bank.example.com", "*.apple.com"
-	Reason    string   `json:"reason"`     // "Banking", "OS Updates"
+	Domain    string   `json:"domain"` // "bank.example.com", "*.apple.com"
+	Reason    string   `json:"reason"` // "Banking", "OS Updates"
 	Enabled   bool     `json:"enabled"`
 	DeviceIDs []string `json:"device_ids"` // Empty = all devices
 }
 
 // PolicyDecision represents the result of policy evaluation
 type PolicyDecision struct {
-	Action         Action
-	Reason         string
-	BlockPage      string
-	InjectTimer    bool
-	TimeRemaining  time.Duration
-	MatchedRuleID  string
-	Category       string
-	UsageLimitID   string
+	Action        Action
+	Reason        string
+	BlockPage     string
+	InjectTimer   bool
+	TimeRemaining time.Duration
+	MatchedRuleID string
+	Category      string
+	UsageLimitID  string
 }
 
 // ProxyRequest represents an HTTP request to be evaluated

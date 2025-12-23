@@ -36,12 +36,12 @@ type ServerConfig struct {
 
 // DNSConfig defines DNS server settings
 type DNSConfig struct {
-	UpstreamServers  []string          `mapstructure:"upstream_servers"`
-	InterceptTTL     uint32            `mapstructure:"intercept_ttl"`
-	BypassTTLCap     uint32            `mapstructure:"bypass_ttl_cap"`
-	BlockTTL         uint32            `mapstructure:"block_ttl"`
-	UpstreamTimeout  string            `mapstructure:"upstream_timeout"`
-	GlobalBypass     []string          `mapstructure:"global_bypass"`
+	UpstreamServers []string `mapstructure:"upstream_servers"`
+	InterceptTTL    uint32   `mapstructure:"intercept_ttl"`
+	BypassTTLCap    uint32   `mapstructure:"bypass_ttl_cap"`
+	BlockTTL        uint32   `mapstructure:"block_ttl"`
+	UpstreamTimeout string   `mapstructure:"upstream_timeout"`
+	GlobalBypass    []string `mapstructure:"global_bypass"`
 }
 
 // TLSConfig defines certificate authority settings
@@ -62,17 +62,17 @@ type DatabaseConfig struct {
 
 // LoggingConfig defines logging behavior
 type LoggingConfig struct {
-	Level                  string `mapstructure:"level"`
-	Format                 string `mapstructure:"format"`
-	RequestLogRetentionDays int   `mapstructure:"request_log_retention_days"`
+	Level                   string `mapstructure:"level"`
+	Format                  string `mapstructure:"format"`
+	RequestLogRetentionDays int    `mapstructure:"request_log_retention_days"`
 }
 
 // PolicyConfig defines policy engine defaults
 type PolicyConfig struct {
-	DefaultAction   string `mapstructure:"default_action"`
-	DefaultAllow    bool   `mapstructure:"default_allow"`
-	UseMACAddress   bool   `mapstructure:"use_mac_address"`
-	ARPCacheTTL     string `mapstructure:"arp_cache_ttl"`
+	DefaultAction string `mapstructure:"default_action"`
+	DefaultAllow  bool   `mapstructure:"default_allow"`
+	UseMACAddress bool   `mapstructure:"use_mac_address"`
+	ARPCacheTTL   string `mapstructure:"arp_cache_ttl"`
 }
 
 // UsageConfig defines usage tracking settings
