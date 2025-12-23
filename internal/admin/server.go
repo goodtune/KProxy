@@ -142,7 +142,7 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/", s.handleDashboard).Methods("GET")
 	authRouter.HandleFunc("/admin/dashboard", s.handleDashboard).Methods("GET")
 
-	// Device API routes
+	// Device API routes (Phase 5.3)
 	deviceHandler := api.NewDeviceHandler(s.store.Devices(), s.logger)
 	authRouter.HandleFunc("/api/devices", deviceHandler.List).Methods("GET")
 	authRouter.HandleFunc("/api/devices", deviceHandler.Create).Methods("POST")
@@ -150,10 +150,46 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/api/devices/{id}", deviceHandler.Update).Methods("PUT")
 	authRouter.HandleFunc("/api/devices/{id}", deviceHandler.Delete).Methods("DELETE")
 
+	// Profile API routes (Phase 5.4)
+	profileHandler := api.NewProfileHandler(s.store.Profiles(), s.logger)
+	authRouter.HandleFunc("/api/profiles", profileHandler.List).Methods("GET")
+	authRouter.HandleFunc("/api/profiles", profileHandler.Create).Methods("POST")
+	authRouter.HandleFunc("/api/profiles/{id}", profileHandler.Get).Methods("GET")
+	authRouter.HandleFunc("/api/profiles/{id}", profileHandler.Update).Methods("PUT")
+	authRouter.HandleFunc("/api/profiles/{id}", profileHandler.Delete).Methods("DELETE")
+
+	// Rules API routes (Phase 5.5)
+	rulesHandler := api.NewRulesHandler(
+		s.store.Rules(),
+		s.store.TimeRules(),
+		s.store.UsageLimits(),
+		s.store.BypassRules(),
+		s.policyEngine,
+		s.logger,
+	)
+	// Regular rules
+	authRouter.HandleFunc("/api/profiles/{profileID}/rules", rulesHandler.ListRules).Methods("GET")
+	authRouter.HandleFunc("/api/profiles/{profileID}/rules", rulesHandler.CreateRule).Methods("POST")
+	authRouter.HandleFunc("/api/profiles/{profileID}/rules/{ruleID}", rulesHandler.GetRule).Methods("GET")
+	authRouter.HandleFunc("/api/profiles/{profileID}/rules/{ruleID}", rulesHandler.UpdateRule).Methods("PUT")
+	authRouter.HandleFunc("/api/profiles/{profileID}/rules/{ruleID}", rulesHandler.DeleteRule).Methods("DELETE")
+
+	// Time rules
+	authRouter.HandleFunc("/api/profiles/{profileID}/time-rules", rulesHandler.ListTimeRules).Methods("GET")
+	authRouter.HandleFunc("/api/profiles/{profileID}/time-rules", rulesHandler.CreateTimeRule).Methods("POST")
+	authRouter.HandleFunc("/api/profiles/{profileID}/time-rules/{ruleID}", rulesHandler.DeleteTimeRule).Methods("DELETE")
+
+	// Usage limits
+	authRouter.HandleFunc("/api/profiles/{profileID}/usage-limits", rulesHandler.ListUsageLimits).Methods("GET")
+	authRouter.HandleFunc("/api/profiles/{profileID}/usage-limits", rulesHandler.CreateUsageLimit).Methods("POST")
+	authRouter.HandleFunc("/api/profiles/{profileID}/usage-limits/{limitID}", rulesHandler.DeleteUsageLimit).Methods("DELETE")
+
+	// Bypass rules (global, not profile-specific)
+	authRouter.HandleFunc("/api/bypass-rules", rulesHandler.ListBypassRules).Methods("GET")
+	authRouter.HandleFunc("/api/bypass-rules", rulesHandler.CreateBypassRule).Methods("POST")
+	authRouter.HandleFunc("/api/bypass-rules/{id}", rulesHandler.DeleteBypassRule).Methods("DELETE")
+
 	// API routes will be added in later phases:
-	// - Phase 5.3: Device management
-	// - Phase 5.4: Profile management
-	// - Phase 5.5: Rules management
 	// - Phase 5.6: Logs & monitoring
 	// - Phase 5.7: Usage & sessions
 	// - Phase 5.8: Dashboard statistics
