@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/goodtune/kproxy/internal/admin/api"
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/storage"
@@ -141,6 +142,14 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/", s.handleDashboard).Methods("GET")
 	authRouter.HandleFunc("/admin/dashboard", s.handleDashboard).Methods("GET")
 
+	// Device API routes
+	deviceHandler := api.NewDeviceHandler(s.store.Devices(), s.logger)
+	authRouter.HandleFunc("/api/devices", deviceHandler.List).Methods("GET")
+	authRouter.HandleFunc("/api/devices", deviceHandler.Create).Methods("POST")
+	authRouter.HandleFunc("/api/devices/{id}", deviceHandler.Get).Methods("GET")
+	authRouter.HandleFunc("/api/devices/{id}", deviceHandler.Update).Methods("PUT")
+	authRouter.HandleFunc("/api/devices/{id}", deviceHandler.Delete).Methods("DELETE")
+
 	// API routes will be added in later phases:
 	// - Phase 5.3: Device management
 	// - Phase 5.4: Profile management
@@ -212,8 +221,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Helper function to write JSON responses.
-func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+// WriteJSON writes a JSON response (exported for use in api subpackage).
+func WriteJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(data); err != nil {
 		http.Error(w, `{"error":"Internal Server Error","message":"Failed to encode response"}`, http.StatusInternalServerError)
@@ -225,11 +234,20 @@ func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	_, _ = w.Write(buf.Bytes())
 }
 
-// Helper function to write error responses.
-func writeError(w http.ResponseWriter, statusCode int, message string) {
-	writeJSON(w, statusCode, ErrorResponse{
+// WriteError writes an error response (exported for use in api subpackage).
+func WriteError(w http.ResponseWriter, statusCode int, message string) {
+	WriteJSON(w, statusCode, ErrorResponse{
 		Error:   http.StatusText(statusCode),
 		Message: message,
 		Code:    statusCode,
 	})
+}
+
+// For backward compatibility within this package
+func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+	WriteJSON(w, statusCode, data)
+}
+
+func writeError(w http.ResponseWriter, statusCode int, message string) {
+	WriteError(w, statusCode, message)
 }
