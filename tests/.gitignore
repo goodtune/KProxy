@@ -1,0 +1,15 @@
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Pytest cache
+.pytest_cache/
+
+# Screenshots
+screenshots/
+
+# Test videos (if enabled)
+test-results/
+videos/
