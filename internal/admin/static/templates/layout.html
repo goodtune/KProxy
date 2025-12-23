@@ -25,6 +25,8 @@
         {{template "logs_content" .}}
     {{else if eq .PageID "sessions"}}
         {{template "sessions_content" .}}
+    {{else if eq .PageID "settings"}}
+        {{template "settings_content" .}}
     {{else}}
         {{block "content" .}}{{end}}
     {{end}}

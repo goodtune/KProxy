@@ -1,0 +1,328 @@
+{{define "settings_content"}}
+<div class="flex h-screen bg-gray-100">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-800 text-white flex flex-col">
+        <div class="p-4 border-b border-gray-700">
+            <h1 class="text-xl font-bold">KProxy Admin</h1>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-2">
+            <a href="/admin/dashboard" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Dashboard
+            </a>
+            <a href="/admin/devices" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Devices
+            </a>
+            <a href="/admin/profiles" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Profiles
+            </a>
+            <a href="/admin/rules" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Rules
+            </a>
+            <a href="/admin/logs" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Logs
+            </a>
+            <a href="/admin/sessions" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Sessions
+            </a>
+            <a href="/admin/settings" class="block px-4 py-2 rounded bg-gray-700 hover:bg-gray-600">
+                Settings
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-gray-700">
+            <button id="logoutBtn" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-white">
+                Logout
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+        <div class="p-8">
+            <h2 class="text-3xl font-bold text-gray-900 mb-8">System Settings</h2>
+
+            <!-- System Information -->
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">System Information</h3>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="systemInfo">
+                        <div class="text-center py-8 col-span-2 text-gray-500">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-gray-900">System Health</h3>
+                    <button id="refreshHealth" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                        Refresh
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div id="healthInfo" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="text-center py-8 col-span-3 text-gray-500">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Control -->
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">System Control</h3>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded">
+                            <div>
+                                <h4 class="font-medium text-gray-900">Reload Policy Engine</h4>
+                                <p class="text-sm text-gray-600 mt-1">
+                                    Reload all devices, profiles, rules, and policies from the database
+                                </p>
+                            </div>
+                            <button id="reloadPolicyBtn" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded">
+                                Reload Policy
+                            </button>
+                        </div>
+
+                        <div id="reloadStatus" class="hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account Settings -->
+            <div class="bg-white rounded-lg shadow mb-6">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">Account Settings</h3>
+                </div>
+                <div class="p-6">
+                    <form id="changePasswordForm" class="max-w-md">
+                        <h4 class="font-medium text-gray-900 mb-4">Change Password</h4>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Current Password
+                            </label>
+                            <input type="password" id="currentPassword" required
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                New Password
+                            </label>
+                            <input type="password" id="newPassword" required minlength="8"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Confirm New Password
+                            </label>
+                            <input type="password" id="confirmPassword" required minlength="8"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <div id="passwordStatus" class="mb-4 hidden"></div>
+
+                        <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">
+                            Change Password
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+// Logout functionality
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/admin/login';
+    } catch (error) {
+        console.error('Logout failed:', error);
+    }
+});
+
+// Load system information
+async function loadSystemInfo() {
+    try {
+        const response = await fetch('/api/system/info');
+        if (!response.ok) throw new Error('Failed to fetch system info');
+        const info = await response.json();
+
+        document.getElementById('systemInfo').innerHTML = `
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Version</div>
+                <div class="text-lg font-semibold text-gray-900">${info.version || 'N/A'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Go Version</div>
+                <div class="text-lg font-semibold text-gray-900">${info.go_version || 'N/A'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Uptime</div>
+                <div class="text-lg font-semibold text-gray-900">${info.uptime || 'N/A'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">CPU Cores</div>
+                <div class="text-lg font-semibold text-gray-900">${info.num_cpu || 'N/A'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Goroutines</div>
+                <div class="text-lg font-semibold text-gray-900">${info.num_goroutine || 'N/A'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Start Time</div>
+                <div class="text-lg font-semibold text-gray-900">${new Date(info.start_time).toLocaleString()}</div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Failed to load system info:', error);
+        document.getElementById('systemInfo').innerHTML =
+            '<div class="col-span-2 text-center text-red-500 py-8">Failed to load system information</div>';
+    }
+}
+
+// Load health information
+async function loadHealth() {
+    try {
+        const response = await fetch('/api/system/health');
+        if (!response.ok) throw new Error('Failed to fetch health');
+        const health = await response.json();
+
+        const statusColor = health.status === 'healthy' ? 'text-green-600' : 'text-red-600';
+
+        document.getElementById('healthInfo').innerHTML = `
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Status</div>
+                <div class="text-lg font-semibold ${statusColor}">${health.status || 'Unknown'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Memory Allocated</div>
+                <div class="text-lg font-semibold text-gray-900">${health.memory?.alloc_mb || 0} MB</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">System Memory</div>
+                <div class="text-lg font-semibold text-gray-900">${health.memory?.sys_mb || 0} MB</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Uptime</div>
+                <div class="text-lg font-semibold text-gray-900">${health.uptime_human || 'N/A'}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">Goroutines</div>
+                <div class="text-lg font-semibold text-gray-900">${health.goroutines || 0}</div>
+            </div>
+            <div class="p-4 bg-gray-50 rounded">
+                <div class="text-sm text-gray-600">GC Runs</div>
+                <div class="text-lg font-semibold text-gray-900">${health.memory?.num_gc || 0}</div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Failed to load health:', error);
+        document.getElementById('healthInfo').innerHTML =
+            '<div class="col-span-3 text-center text-red-500 py-8">Failed to load health information</div>';
+    }
+}
+
+// Reload policy
+document.getElementById('reloadPolicyBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('reloadPolicyBtn');
+    const statusDiv = document.getElementById('reloadStatus');
+
+    btn.disabled = true;
+    btn.textContent = 'Reloading...';
+    statusDiv.classList.add('hidden');
+
+    try {
+        const response = await fetch('/api/system/reload', { method: 'POST' });
+        const result = await response.json();
+
+        if (response.ok) {
+            statusDiv.className = 'p-4 bg-green-50 border border-green-200 rounded text-green-800';
+            statusDiv.textContent = '✓ Policy reloaded successfully';
+        } else {
+            statusDiv.className = 'p-4 bg-red-50 border border-red-200 rounded text-red-800';
+            statusDiv.textContent = '✗ ' + (result.message || 'Failed to reload policy');
+        }
+    } catch (error) {
+        statusDiv.className = 'p-4 bg-red-50 border border-red-200 rounded text-red-800';
+        statusDiv.textContent = '✗ Failed to reload policy: ' + error.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reload Policy';
+        statusDiv.classList.remove('hidden');
+
+        setTimeout(() => {
+            statusDiv.classList.add('hidden');
+        }, 5000);
+    }
+});
+
+// Change password
+document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const statusDiv = document.getElementById('passwordStatus');
+
+    // Validate passwords match
+    if (newPassword !== confirmPassword) {
+        statusDiv.className = 'p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm';
+        statusDiv.textContent = 'New passwords do not match';
+        statusDiv.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword
+            })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            statusDiv.className = 'p-3 bg-green-50 border border-green-200 rounded text-green-800 text-sm';
+            statusDiv.textContent = '✓ Password changed successfully';
+            document.getElementById('changePasswordForm').reset();
+        } else {
+            statusDiv.className = 'p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm';
+            statusDiv.textContent = '✗ ' + (result.message || 'Failed to change password');
+        }
+    } catch (error) {
+        statusDiv.className = 'p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm';
+        statusDiv.textContent = '✗ Failed to change password: ' + error.message;
+    } finally {
+        statusDiv.classList.remove('hidden');
+
+        setTimeout(() => {
+            statusDiv.classList.add('hidden');
+        }, 5000);
+    }
+});
+
+// Refresh health button
+document.getElementById('refreshHealth').addEventListener('click', loadHealth);
+
+// Initial load
+loadSystemInfo();
+loadHealth();
+
+// Auto-refresh health every 30 seconds
+setInterval(loadHealth, 30000);
+</script>
+{{end}}

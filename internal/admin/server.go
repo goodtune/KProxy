@@ -146,6 +146,7 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/admin/logs", s.handleLogsPage).Methods("GET")
 	authRouter.HandleFunc("/admin/sessions", s.handleSessionsPage).Methods("GET")
 	authRouter.HandleFunc("/admin/rules", s.handleRulesPage).Methods("GET")
+	authRouter.HandleFunc("/admin/settings", s.handleSettingsPage).Methods("GET")
 
 	// Device API routes (Phase 5.3)
 	deviceHandler := api.NewDeviceHandler(s.store.Devices(), s.logger)
@@ -223,8 +224,12 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/api/stats/top-domains", statsHandler.GetTopDomains).Methods("GET")
 	authRouter.HandleFunc("/api/stats/blocked", statsHandler.GetBlockedStats).Methods("GET")
 
-	// API routes will be added in later phases:
-	// - Phase 5.9: System control
+	// System Control API routes (Phase 5.9)
+	systemHandler := api.NewSystemHandler(s.policyEngine, s.logger)
+	authRouter.HandleFunc("/api/system/reload", systemHandler.ReloadPolicy).Methods("POST")
+	authRouter.HandleFunc("/api/system/health", systemHandler.GetHealth).Methods("GET")
+	authRouter.HandleFunc("/api/system/info", systemHandler.GetSystemInfo).Methods("GET")
+	authRouter.HandleFunc("/api/system/config", systemHandler.GetConfig).Methods("GET")
 }
 
 // Start starts the admin HTTPS server.
@@ -340,6 +345,17 @@ func (s *Server) handleRulesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render rules template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title":  "Settings",
+		"PageID": "settings",
+	}
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render settings template")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
