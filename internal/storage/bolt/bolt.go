@@ -31,6 +31,7 @@ const (
 	bucketIndexDevice = "device"
 	bucketIndexAction = "action"
 	bucketIndexDomain = "domain"
+	bucketAdminUsers  = "admin_users"
 )
 
 // Store implements the storage.Store interface using bbolt.
@@ -80,6 +81,7 @@ func (s *Store) ensureBuckets() error {
 			[]byte(bucketLogsHTTP),
 			[]byte(bucketLogsDNS),
 			[]byte(bucketIndexes),
+			[]byte(bucketAdminUsers),
 		}
 
 		for _, name := range buckets {
@@ -131,6 +133,9 @@ func (s *Store) Usage() storage.UsageStore { return &usageStore{db: s.db} }
 
 // Logs returns the log store.
 func (s *Store) Logs() storage.LogStore { return &logStore{db: s.db} }
+
+// AdminUsers returns the admin user store.
+func (s *Store) AdminUsers() storage.AdminUserStore { return &adminUserStore{db: s.db} }
 
 func marshal(value any) ([]byte, error) {
 	data, err := json.Marshal(value)

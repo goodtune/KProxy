@@ -20,6 +20,7 @@ type Store interface {
 	BypassRules() BypassRuleStore
 	Usage() UsageStore
 	Logs() LogStore
+	AdminUsers() AdminUserStore
 }
 
 // DeviceStore manages device persistence.
@@ -89,4 +90,13 @@ type LogStore interface {
 	AddDNSLog(ctx context.Context, log DNSLog) error
 	DeleteRequestLogsBefore(ctx context.Context, cutoff time.Time) (int, error)
 	DeleteDNSLogsBefore(ctx context.Context, cutoff time.Time) (int, error)
+}
+
+// AdminUserStore manages admin user accounts.
+type AdminUserStore interface {
+	Get(ctx context.Context, username string) (*AdminUser, error)
+	List(ctx context.Context) ([]AdminUser, error)
+	Upsert(ctx context.Context, user AdminUser) error
+	Delete(ctx context.Context, username string) error
+	UpdateLastLogin(ctx context.Context, username string, loginTime time.Time) error
 }
