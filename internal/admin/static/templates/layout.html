@@ -19,6 +19,8 @@
         {{template "devices_content" .}}
     {{else if eq .PageID "profiles"}}
         {{template "profiles_content" .}}
+    {{else if eq .PageID "rules"}}
+        {{template "rules_content" .}}
     {{else if eq .PageID "logs"}}
         {{template "logs_content" .}}
     {{else if eq .PageID "sessions"}}

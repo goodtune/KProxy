@@ -145,6 +145,7 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/admin/profiles", s.handleProfilesPage).Methods("GET")
 	authRouter.HandleFunc("/admin/logs", s.handleLogsPage).Methods("GET")
 	authRouter.HandleFunc("/admin/sessions", s.handleSessionsPage).Methods("GET")
+	authRouter.HandleFunc("/admin/rules", s.handleRulesPage).Methods("GET")
 
 	// Device API routes (Phase 5.3)
 	deviceHandler := api.NewDeviceHandler(s.store.Devices(), s.logger)
@@ -315,6 +316,17 @@ func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render sessions template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleRulesPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title":  "Rules",
+		"PageID": "rules",
+	}
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render rules template")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
