@@ -49,6 +49,13 @@ jobs:
         env:
           CGO_ENABLED: 1
 
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kproxy-binary-${{ matrix.go-version }}
+          path: bin/kproxy
+          retention-days: 1
+
       - name: Run tests
         run: make test
         env:
@@ -114,25 +121,19 @@ jobs:
   playwright:
     name: Playwright Tests
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Download KProxy binary
+        uses: actions/download-artifact@v4
         with:
-          go-version: '1.24'
-          cache: true
+          name: kproxy-binary-1.24
+          path: bin/
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++
-
-      - name: Build KProxy
-        run: make build
-        env:
-          CGO_ENABLED: 1
+      - name: Make binary executable
+        run: chmod +x bin/kproxy
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -265,7 +266,8 @@ jobs:
       - name: Run Playwright tests
         working-directory: tests
         run: |
-          uv run pytest -vv --headed --screenshot=only-on-failure
+          mkdir -p screenshots
+          uv run pytest -vv --screenshot=only-on-failure
         continue-on-error: true
 
       - name: Stop KProxy
@@ -275,12 +277,19 @@ jobs:
             kill $(cat /tmp/kproxy.pid) || true
           fi
 
-      - name: Upload test artifacts
+      - name: List screenshots for debugging
+        if: always()
+        run: |
+          echo "Screenshot directory contents:"
+          ls -la tests/screenshots/ || echo "No screenshots directory found"
+
+      - name: Upload test screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-screenshots
-          path: tests/screenshots/
+          path: tests/screenshots/**/*.png
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Upload KProxy logs
@@ -289,4 +298,5 @@ jobs:
         with:
           name: kproxy-logs
           path: /tmp/kproxy.log
+          if-no-files-found: warn
           retention-days: 7
