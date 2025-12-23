@@ -24,50 +24,6 @@ jobs:
           go-version: '1.24'
           cache: true
 
-      - name: Install cross-compilation toolchains
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc \
-            g++ \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
-            gcc-mingw-w64-x86-64 \
-            g++-mingw-w64-x86-64
-
-      - name: Install OSXCross for macOS builds
-        run: |
-          # Install dependencies for OSXCross
-          sudo apt-get install -y \
-            clang \
-            cmake \
-            libssl-dev \
-            libxml2-dev \
-            lzma-dev \
-            llvm-dev \
-            uuid-dev \
-            patch
-
-          # Clone and build OSXCross
-          git clone https://github.com/tpoechtrager/osxcross /tmp/osxcross
-          cd /tmp/osxcross
-
-          # Download macOS SDK
-          wget -nc https://github.com/joseluisq/macosx-sdks/releases/download/14.5/MacOSX14.5.sdk.tar.xz
-          mv MacOSX14.5.sdk.tar.xz tarballs/
-
-          # Build OSXCross
-          UNATTENDED=yes OSX_VERSION_MIN=10.13 ./build.sh
-
-          # Add to PATH
-          echo "/tmp/osxcross/target/bin" >> $GITHUB_PATH
-
-          # Set environment variables for macOS cross-compilation
-          echo "CC_darwin_amd64=o64-clang" >> $GITHUB_ENV
-          echo "CXX_darwin_amd64=o64-clang++" >> $GITHUB_ENV
-          echo "CC_darwin_arm64=oa64e-clang" >> $GITHUB_ENV
-          echo "CXX_darwin_arm64=oa64e-clang++" >> $GITHUB_ENV
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
