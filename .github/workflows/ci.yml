@@ -325,8 +325,16 @@ jobs:
         working-directory: tests
         run: |
           mkdir -p screenshots
-          uv run pytest -vv --screenshot=only-on-failure
+          uv run pytest -vv --screenshot=only-on-failure --junitxml=pytest-results.xml
         continue-on-error: true
+
+      - name: Publish Test Results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Pytest Results
+          path: tests/pytest-results.xml
+          reporter: junit
 
       - name: Stop KProxy
         if: always()
