@@ -243,6 +243,8 @@ jobs:
 
           admin:
             enabled: true
+            port: 8443
+            bind_address: "127.0.0.1"
             jwt_secret: "test-secret-key-change-in-production"
             token_expiration: "24h"
             initial_username: "admin"
