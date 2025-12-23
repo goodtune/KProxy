@@ -158,19 +158,35 @@ jobs:
         run: |
           mkdir -p /tmp/kproxy/ca
           cd /tmp/kproxy/ca
-          # Generate root CA
-          openssl genrsa -out root-ca.key 4096
-          openssl req -x509 -new -nodes -key root-ca.key -sha256 -days 1 \
+          # Generate root CA (ECDSA)
+          openssl ecparam -name prime256v1 -genkey -noout -out root-ca.key
+          openssl req -new -x509 -sha256 \
+            -key root-ca.key \
             -out root-ca.crt \
+            -days 1 \
             -subj "/C=US/ST=Test/L=Test/O=KProxy Test/CN=KProxy Root CA"
-          # Generate intermediate CA
-          openssl genrsa -out intermediate-ca.key 4096
-          openssl req -new -key intermediate-ca.key \
+          # Generate intermediate CA (ECDSA)
+          openssl ecparam -name prime256v1 -genkey -noout -out intermediate-ca.key
+          openssl req -new -sha256 \
+            -key intermediate-ca.key \
             -out intermediate-ca.csr \
             -subj "/C=US/ST=Test/L=Test/O=KProxy Test/CN=KProxy Intermediate CA"
-          openssl x509 -req -in intermediate-ca.csr \
-            -CA root-ca.crt -CAkey root-ca.key -CAcreateserial \
-            -out intermediate-ca.crt -days 1 -sha256
+          # Create extension file for intermediate CA
+          cat > intermediate-ca.ext << 'EXTEOF'
+          basicConstraints = critical,CA:TRUE,pathlen:0
+          keyUsage = critical,keyCertSign,cRLSign
+          subjectKeyIdentifier = hash
+          authorityKeyIdentifier = keyid:always
+          EXTEOF
+          # Sign intermediate CA with root CA
+          openssl x509 -req -sha256 \
+            -in intermediate-ca.csr \
+            -CA root-ca.crt \
+            -CAkey root-ca.key \
+            -CAcreateserial \
+            -out intermediate-ca.crt \
+            -days 1 \
+            -extfile intermediate-ca.ext
 
       - name: Create test config
         run: |
