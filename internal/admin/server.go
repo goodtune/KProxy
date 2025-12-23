@@ -141,6 +141,8 @@ func (s *Server) setupRoutes() {
 	// Web UI routes
 	authRouter.HandleFunc("/", s.handleDashboard).Methods("GET")
 	authRouter.HandleFunc("/admin/dashboard", s.handleDashboard).Methods("GET")
+	authRouter.HandleFunc("/admin/devices", s.handleDevicesPage).Methods("GET")
+	authRouter.HandleFunc("/admin/profiles", s.handleProfilesPage).Methods("GET")
 
 	// Device API routes (Phase 5.3)
 	deviceHandler := api.NewDeviceHandler(s.store.Devices(), s.logger)
@@ -253,6 +255,28 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render dashboard template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleDevicesPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title":  "Devices",
+		"PageID": "devices",
+	}
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render devices template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleProfilesPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title":  "Profiles",
+		"PageID": "profiles",
+	}
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render profiles template")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }

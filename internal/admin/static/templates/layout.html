@@ -15,6 +15,10 @@
         {{template "login_content" .}}
     {{else if eq .PageID "dashboard"}}
         {{template "dashboard_content" .}}
+    {{else if eq .PageID "devices"}}
+        {{template "devices_content" .}}
+    {{else if eq .PageID "profiles"}}
+        {{template "profiles_content" .}}
     {{else}}
         {{block "content" .}}{{end}}
     {{end}}
