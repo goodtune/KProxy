@@ -209,13 +209,14 @@ func main() {
 		// Create admin server
 		adminConfig := admin.Config{
 			ListenAddr:      fmt.Sprintf("%s:%d", cfg.Admin.BindAddress, cfg.Admin.Port),
+			ServerName:      cfg.Server.AdminDomain,
 			JWTSecret:       cfg.Admin.JWTSecret,
 			TokenExpiration: parseDuration(cfg.Admin.SessionTimeout, 24*time.Hour),
 			RateLimit:       cfg.Admin.RateLimit,
 			RateLimitWindow: parseDuration(cfg.Admin.RateLimitWindow, time.Minute),
 		}
 
-		adminServer = admin.NewServer(adminConfig, store, policyEngine, logger)
+		adminServer = admin.NewServer(adminConfig, store, policyEngine, certificateAuthority, logger)
 
 		if err := adminServer.Start(); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to start Admin Server")
@@ -233,7 +234,7 @@ func main() {
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)
 	if cfg.Admin.Enabled {
-		logger.Info().Msgf("Admin Interface: http://%s:%d/admin/login", cfg.Admin.BindAddress, cfg.Admin.Port)
+		logger.Info().Msgf("Admin Interface: https://%s:%d/admin/login", cfg.Admin.BindAddress, cfg.Admin.Port)
 	}
 
 	// Wait for shutdown signal

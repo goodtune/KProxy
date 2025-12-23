@@ -32,13 +32,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set cookies
+	// Set cookies (admin interface is always HTTPS)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "admin_token",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
+		Secure:   true, // Admin interface uses HTTPS
 		SameSite: http.SameSiteLaxMode,
 		Expires:  session.ExpiresAt,
 	})
@@ -48,7 +48,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    session.ID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
+		Secure:   true, // Admin interface uses HTTPS
 		SameSite: http.SameSiteLaxMode,
 		Expires:  session.ExpiresAt,
 	})

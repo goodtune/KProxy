@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"crypto/tls"
 	"embed"
 	"fmt"
 	"html/template"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/gorilla/mux"
@@ -21,6 +23,7 @@ var staticFS embed.FS
 // Config holds the admin server configuration.
 type Config struct {
 	ListenAddr      string
+	ServerName      string   // Hostname for TLS certificate generation
 	JWTSecret       string
 	TokenExpiration time.Duration
 	RateLimit       int
@@ -33,6 +36,7 @@ type Server struct {
 	config        Config
 	store         storage.Store
 	policyEngine  *policy.Engine
+	ca            *ca.CA
 	auth          *AuthService
 	rateLimiter   *RateLimiter
 	server        *http.Server
@@ -42,7 +46,7 @@ type Server struct {
 }
 
 // NewServer creates a new admin server.
-func NewServer(cfg Config, store storage.Store, policyEngine *policy.Engine, logger zerolog.Logger) *Server {
+func NewServer(cfg Config, store storage.Store, policyEngine *policy.Engine, certificateAuthority *ca.CA, logger zerolog.Logger) *Server {
 	// Create auth service
 	auth := NewAuthService(store.AdminUsers(), cfg.JWTSecret, cfg.TokenExpiration)
 
@@ -74,6 +78,7 @@ func NewServer(cfg Config, store storage.Store, policyEngine *policy.Engine, log
 		config:       cfg,
 		store:        store,
 		policyEngine: policyEngine,
+		ca:           certificateAuthority,
 		auth:         auth,
 		rateLimiter:  rateLimiter,
 		router:       router,
@@ -84,13 +89,17 @@ func NewServer(cfg Config, store storage.Store, policyEngine *policy.Engine, log
 	// Setup routes
 	s.setupRoutes()
 
-	// Create HTTP server
+	// Create HTTPS server with TLS config
 	s.server = &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
+		TLSConfig: &tls.Config{
+			GetCertificate: certificateAuthority.GetCertificate,
+			MinVersion:     tls.VersionTLS12,
+		},
 	}
 
 	return s
@@ -140,14 +149,16 @@ func (s *Server) setupRoutes() {
 	// - Phase 5.9: System control
 }
 
-// Start starts the admin HTTP server.
+// Start starts the admin HTTPS server.
 func (s *Server) Start() error {
 	s.logger.Info().
 		Str("addr", s.config.ListenAddr).
-		Msg("Starting admin server")
+		Str("servername", s.config.ServerName).
+		Msg("Starting admin server (HTTPS)")
 
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		// Empty strings tell ListenAndServeTLS to use the TLSConfig.GetCertificate callback
+		if err := s.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 			s.logger.Error().Err(err).Msg("Admin server error")
 		}
 	}()
