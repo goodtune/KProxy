@@ -89,15 +89,15 @@ func runMigrations(db *sql.DB) error {
 // getMigrations returns all database migrations
 func getMigrations() map[int]string {
 	return map[int]string{
-		1: migration001Devices,
-		2: migration002Profiles,
-		3: migration003Rules,
-		4: migration004TimeRules,
-		5: migration005UsageLimits,
-		6: migration006RequestLogs,
-		7: migration007DNSLogs,
-		8: migration008DailyUsage,
-		9: migration009Sessions,
+		1:  migration001Devices,
+		2:  migration002Profiles,
+		3:  migration003Rules,
+		4:  migration004TimeRules,
+		5:  migration005UsageLimits,
+		6:  migration006RequestLogs,
+		7:  migration007DNSLogs,
+		8:  migration008DailyUsage,
+		9:  migration009Sessions,
 		10: migration010BypassRules,
 	}
 }

@@ -24,13 +24,13 @@ const (
 
 // Tracker manages usage tracking sessions
 type Tracker struct {
-	db                 *database.DB
-	sessions           map[string]*Session // key: sessionID
+	db                  *database.DB
+	sessions            map[string]*Session // key: sessionID
 	deviceLimitSessions map[string]string   // key: deviceID:limitID -> sessionID
-	inactivityTimeout  time.Duration
-	minSessionDuration time.Duration
-	logger             zerolog.Logger
-	mu                 sync.RWMutex
+	inactivityTimeout   time.Duration
+	minSessionDuration  time.Duration
+	logger              zerolog.Logger
+	mu                  sync.RWMutex
 }
 
 // Config holds tracker configuration
