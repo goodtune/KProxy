@@ -366,6 +366,9 @@ func getResetDate(now time.Time, resetTime time.Time) time.Time {
 // generateSessionID generates a unique session ID
 func generateSessionID() string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// This should never happen with a working system RNG
+		panic(fmt.Sprintf("failed to generate random session ID: %v", err))
+	}
 	return hex.EncodeToString(bytes)
 }

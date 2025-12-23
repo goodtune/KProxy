@@ -55,7 +55,11 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize database")
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error().Err(err).Msg("Failed to close database")
+		}
+	}()
 
 	logger.Info().Str("path", cfg.Database.Path).Msg("Database initialized")
 
