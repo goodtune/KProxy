@@ -79,7 +79,8 @@ builds:
 # Archive configuration for GitHub releases
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -90,7 +91,8 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - README.md
       - LICENSE
@@ -100,7 +102,7 @@ archives:
 nfpms:
   - id: kproxy-packages
     package_name: kproxy
-    builds:
+    ids:
       - linux-amd64
       - linux-arm64
     file_name_template: >-
@@ -188,8 +190,9 @@ nfpms:
 
     # DEB-specific
     deb:
-      section: net
-      priority: optional
+      fields:
+        Section: net
+        Priority: optional
       compression: xz
 
 # Checksum configuration
