@@ -267,13 +267,52 @@ jobs:
       - name: Verify service is ready
         run: |
           echo "Verifying KProxy admin interface..."
-          # Check health endpoint
-          curl -k -f https://localhost:8443/health || (echo "Health check failed"; exit 1)
-          # Check login page is accessible
-          curl -k -f https://localhost:8443/admin/login || (echo "Login page not accessible"; exit 1)
-          # Show service is running
-          ps aux | grep kproxy | grep -v grep || echo "Process not found!"
-          echo "Service verification complete"
+          echo "Current working directory: $(pwd)"
+          echo "Binary location: $(ls -la bin/kproxy)"
+          echo ""
+
+          # Check if process is running
+          if ps aux | grep -v grep | grep kproxy; then
+            echo "✓ KProxy process is running"
+          else
+            echo "✗ KProxy process not found!"
+            exit 1
+          fi
+
+          echo ""
+          echo "Testing endpoints..."
+
+          # Check health endpoint with verbose output
+          echo "1. Testing /health endpoint..."
+          curl -k -v https://localhost:8443/health 2>&1 | tee /tmp/health-check.log
+          if grep -q "200 OK" /tmp/health-check.log || grep -q '"status":"ok"' /tmp/health-check.log; then
+            echo "✓ Health endpoint responded"
+          else
+            echo "✗ Health endpoint failed"
+            echo "Full response:"
+            cat /tmp/health-check.log
+            echo "KProxy logs:"
+            tail -50 /tmp/kproxy.log
+            exit 1
+          fi
+
+          # Check login page
+          echo ""
+          echo "2. Testing /admin/login page..."
+          curl -k -v https://localhost:8443/admin/login 2>&1 | tee /tmp/login-check.log
+          if grep -q "200 OK" /tmp/login-check.log; then
+            echo "✓ Login page is accessible"
+          else
+            echo "✗ Login page not accessible"
+            echo "Full response:"
+            cat /tmp/login-check.log
+            echo "KProxy logs:"
+            tail -50 /tmp/kproxy.log
+            exit 1
+          fi
+
+          echo ""
+          echo "✓ Service verification complete - all checks passed!"
 
       - name: Run Playwright tests
         working-directory: tests
