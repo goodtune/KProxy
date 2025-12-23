@@ -1,80 +1,21 @@
 version: 2
 
 # Main build configuration
-# Note: This project uses CGO (SQLite), which makes cross-compilation complex.
-# We use separate build configurations for different platforms.
 builds:
-  # Linux builds (primary target with packages)
-  - id: linux-amd64
+  - id: kproxy
     main: ./cmd/kproxy
     binary: kproxy
     env:
-      - CGO_ENABLED=1
-      - CC=gcc
+      - CGO_ENABLED=0
     ldflags:
       - -s -w
       - -X main.version={{ .Version }}
-    goos:
-      - linux
-    goarch:
-      - amd64
-
-  - id: linux-arm64
-    main: ./cmd/kproxy
-    binary: kproxy
-    env:
-      - CGO_ENABLED=1
-      - CC=aarch64-linux-gnu-gcc
-    ldflags:
-      - -s -w
-      - -X main.version={{ .Version }}
-    goos:
-      - linux
-    goarch:
-      - arm64
-
-  # macOS builds (CGO enabled, native compilation)
-  - id: darwin-amd64
-    main: ./cmd/kproxy
-    binary: kproxy
-    env:
-      - CGO_ENABLED=1
-    ldflags:
-      - -s -w
-      - -X main.version={{ .Version }}
-    goos:
-      - darwin
-    goarch:
-      - amd64
-
-  - id: darwin-arm64
-    main: ./cmd/kproxy
-    binary: kproxy
-    env:
-      - CGO_ENABLED=1
-    ldflags:
-      - -s -w
-      - -X main.version={{ .Version }}
-    goos:
-      - darwin
-    goarch:
-      - arm64
-
-  # Windows builds (CGO enabled with MinGW)
-  - id: windows-amd64
-    main: ./cmd/kproxy
-    binary: kproxy
-    env:
-      - CGO_ENABLED=1
-      - CC=x86_64-w64-mingw32-gcc
-    ldflags:
-      - -s -w
-      - -X main.version={{ .Version }}
-      - -buildmode=exe
-    goos:
-      - windows
-    goarch:
-      - amd64
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
 
 # Archive configuration for GitHub releases
 archives:
@@ -103,8 +44,7 @@ nfpms:
   - id: kproxy-packages
     package_name: kproxy
     ids:
-      - linux-amd64
-      - linux-arm64
+      - kproxy
     file_name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
