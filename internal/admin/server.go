@@ -143,6 +143,8 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/admin/dashboard", s.handleDashboard).Methods("GET")
 	authRouter.HandleFunc("/admin/devices", s.handleDevicesPage).Methods("GET")
 	authRouter.HandleFunc("/admin/profiles", s.handleProfilesPage).Methods("GET")
+	authRouter.HandleFunc("/admin/logs", s.handleLogsPage).Methods("GET")
+	authRouter.HandleFunc("/admin/sessions", s.handleSessionsPage).Methods("GET")
 
 	// Device API routes (Phase 5.3)
 	deviceHandler := api.NewDeviceHandler(s.store.Devices(), s.logger)
@@ -191,9 +193,22 @@ func (s *Server) setupRoutes() {
 	authRouter.HandleFunc("/api/bypass-rules", rulesHandler.CreateBypassRule).Methods("POST")
 	authRouter.HandleFunc("/api/bypass-rules/{id}", rulesHandler.DeleteBypassRule).Methods("DELETE")
 
+	// Logs API routes (Phase 5.6)
+	logsHandler := api.NewLogsHandler(s.store.Logs(), s.logger)
+	authRouter.HandleFunc("/api/logs/requests", logsHandler.QueryRequestLogs).Methods("GET")
+	authRouter.HandleFunc("/api/logs/dns", logsHandler.QueryDNSLogs).Methods("GET")
+	authRouter.HandleFunc("/api/logs/requests/{days}", logsHandler.DeleteOldRequestLogs).Methods("DELETE")
+	authRouter.HandleFunc("/api/logs/dns/{days}", logsHandler.DeleteOldDNSLogs).Methods("DELETE")
+
+	// Sessions and Usage API routes (Phase 5.7)
+	sessionsHandler := api.NewSessionsHandler(s.store.Usage(), s.logger)
+	authRouter.HandleFunc("/api/sessions", sessionsHandler.ListActiveSessions).Methods("GET")
+	authRouter.HandleFunc("/api/sessions/{id}", sessionsHandler.GetSession).Methods("GET")
+	authRouter.HandleFunc("/api/sessions/{id}", sessionsHandler.TerminateSession).Methods("DELETE")
+	authRouter.HandleFunc("/api/usage/today", sessionsHandler.GetTodayUsage).Methods("GET")
+	authRouter.HandleFunc("/api/usage/{date}", sessionsHandler.GetDailyUsage).Methods("GET")
+
 	// API routes will be added in later phases:
-	// - Phase 5.6: Logs & monitoring
-	// - Phase 5.7: Usage & sessions
 	// - Phase 5.8: Dashboard statistics
 	// - Phase 5.9: System control
 }
@@ -277,6 +292,28 @@ func (s *Server) handleProfilesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render profiles template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleLogsPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title":  "Logs",
+		"PageID": "logs",
+	}
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render logs template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleSessionsPage(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title":  "Sessions",
+		"PageID": "sessions",
+	}
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to render sessions template")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
