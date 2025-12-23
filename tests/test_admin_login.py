@@ -33,10 +33,26 @@ def take_screenshot(page: Page, name: str):
     print(f"📸 Screenshot saved: {screenshot_path}")
 
 
+def assert_page_id(page: Page, expected_id: str):
+    """Assert which page is currently rendered via body data attribute."""
+    body = page.locator("body")
+    expect(body).to_have_attribute("data-page", expected_id)
+
+
+def get_cookie(page: Page, name: str):
+    """Get a cookie by name from the current browser context."""
+    cookies = page.context.cookies()
+    for cookie in cookies:
+        if cookie["name"] == name:
+            return cookie
+    return None
+
+
 def test_login_page_loads(page: Page):
     """Test that the login page loads correctly."""
     page.goto(f"{ADMIN_URL}/admin/login")
     take_screenshot(page, "01_login_page_loaded")
+    assert_page_id(page, "login")
 
     # Check that we're on the login page
     expect(page).to_have_url(f"{ADMIN_URL}/admin/login")
@@ -62,16 +78,20 @@ def test_login_redirects_to_dashboard(page: Page):
     page.locator("#password").fill(ADMIN_PASSWORD)
     take_screenshot(page, "03_credentials_filled")
 
-    # Submit form
-    page.locator('button[type="submit"]').click()
+    # Submit form and verify auth API response
+    with page.expect_response("**/api/auth/login") as login_response:
+        page.locator('button[type="submit"]').click()
 
     # Wait a moment for the request to complete
     page.wait_for_timeout(500)
     take_screenshot(page, "04_after_submit")
+    response = login_response.value
+    assert response.status == 200, f"Login request failed: {response.status}"
 
     # Wait for navigation to dashboard
     page.wait_for_url(f"{ADMIN_URL}/admin/dashboard", timeout=5000)
     take_screenshot(page, "05_dashboard_page_BUG")
+    assert_page_id(page, "dashboard")
 
     # Verify we're on the dashboard URL
     expect(page).to_have_url(f"{ADMIN_URL}/admin/dashboard")
@@ -98,6 +118,10 @@ def test_login_redirects_to_dashboard(page: Page):
 
     # Check for logout button
     expect(page.locator("#logoutBtn")).to_be_visible()
+    auth_cookie = get_cookie(page, "admin_token")
+    session_cookie = get_cookie(page, "admin_session")
+    assert auth_cookie is not None, "admin_token cookie missing after login"
+    assert session_cookie is not None, "admin_session cookie missing after login"
     take_screenshot(page, "07_dashboard_success")
 
 
@@ -111,13 +135,19 @@ def test_login_with_invalid_credentials(page: Page):
     page.locator("#password").fill("wrongpassword")
     take_screenshot(page, "09_invalid_credentials_filled")
 
-    # Submit form
-    page.locator('button[type="submit"]').click()
+    # Submit form and capture response
+    with page.expect_response("**/api/auth/login") as login_response:
+        page.locator('button[type="submit"]').click()
     page.wait_for_timeout(1000)
     take_screenshot(page, "10_invalid_login_error")
+    response = login_response.value
+    assert response.status == 401, f"Expected 401 but got {response.status}"
+    error_payload = response.json()
+    assert error_payload.get("message") == "Invalid username or password"
 
     # Should stay on login page
     expect(page).to_have_url(f"{ADMIN_URL}/admin/login")
+    assert_page_id(page, "login")
 
     # Error message should be visible
     expect(page.locator("#error-message")).to_be_visible()
@@ -157,8 +187,10 @@ def test_logout_clears_session(page: Page):
     page.locator("#password").fill(ADMIN_PASSWORD)
     take_screenshot(page, "14_logout_test_login")
 
-    page.locator('button[type="submit"]').click()
+    with page.expect_response("**/api/auth/login"):
+        page.locator('button[type="submit"]').click()
     page.wait_for_url(f"{ADMIN_URL}/admin/dashboard")
+    assert_page_id(page, "dashboard")
     take_screenshot(page, "15_logout_test_dashboard")
 
     # Now logout
@@ -173,6 +205,7 @@ def test_logout_clears_session(page: Page):
     page.wait_for_url(f"{ADMIN_URL}/admin/login", timeout=5000)
     take_screenshot(page, "18_redirected_to_login")
     expect(page).to_have_url(f"{ADMIN_URL}/admin/login")
+    assert_page_id(page, "login")
 
     # Should see login form
     expect(page.locator("#loginForm")).to_be_visible()

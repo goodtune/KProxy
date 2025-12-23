@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -190,9 +192,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
-		"Title": "Login",
+		"Title":  "Login",
+		"PageID": "login",
 	}
-	if err := s.templates.ExecuteTemplate(w, "login.html", data); err != nil {
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render login template")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
@@ -200,9 +203,10 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
-		"Title": "Dashboard",
+		"Title":  "Dashboard",
+		"PageID": "dashboard",
 	}
-	if err := s.templates.ExecuteTemplate(w, "dashboard.html", data); err != nil {
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render dashboard template")
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
@@ -210,10 +214,15 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // Helper function to write JSON responses.
 func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(data); err != nil {
+		http.Error(w, `{"error":"Internal Server Error","message":"Failed to encode response"}`, http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	// In production, you'd use json.Marshal here
-	fmt.Fprintf(w, "%v", data)
+	_, _ = w.Write(buf.Bytes())
 }
 
 // Helper function to write error responses.
