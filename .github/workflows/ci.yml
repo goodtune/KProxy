@@ -169,6 +169,12 @@ jobs:
             -days 1 \
             -extfile intermediate-ca.ext
 
+      - name: Install CA certificate as trusted
+        run: |
+          sudo cp /tmp/kproxy/ca/root-ca.crt /usr/local/share/ca-certificates/kproxy-test-ca.crt
+          sudo update-ca-certificates
+          echo "CA certificate installed and trusted"
+
       - name: Create test config
         run: |
           mkdir -p /tmp/kproxy/data
@@ -238,7 +244,7 @@ jobs:
           ./bin/kproxy -config /tmp/kproxy/config.yaml > /tmp/kproxy.log 2>&1 &
           echo $! > /tmp/kproxy.pid
           # Wait for server to start
-          timeout 30 bash -c 'until curl -k https://localhost:8443/health 2>/dev/null; do sleep 1; done' || (
+          timeout 30 bash -c 'until curl https://localhost:8443/health 2>/dev/null; do sleep 1; done' || (
             echo "KProxy failed to start. Log output:"
             cat /tmp/kproxy.log
             exit 1
@@ -266,7 +272,7 @@ jobs:
 
           # Check health endpoint with verbose output
           echo "1. Testing /health endpoint..."
-          curl -k -v https://localhost:8443/health 2>&1 | tee /tmp/health-check.log
+          curl -v https://localhost:8443/health 2>&1 | tee /tmp/health-check.log
           if grep -q "200 OK" /tmp/health-check.log || grep -q '"status":"ok"' /tmp/health-check.log; then
             echo "✓ Health endpoint responded"
           else
@@ -281,7 +287,7 @@ jobs:
           # Check login page
           echo ""
           echo "2. Testing /admin/login page..."
-          curl -k -v https://localhost:8443/admin/login 2>&1 | tee /tmp/login-check.log
+          curl -v https://localhost:8443/admin/login 2>&1 | tee /tmp/login-check.log
           if grep -q "200 OK" /tmp/login-check.log; then
             echo "✓ Login page is accessible"
           else
