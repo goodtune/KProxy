@@ -20,6 +20,11 @@ Implement a comprehensive web-based admin interface to provide visibility and co
 
 **Rationale**: htmx chosen for simplicity, no build pipeline required, server-side rendering aligns with Go strengths.
 
+## Plan Completeness Review
+- **Scope coverage**: The plan thoroughly enumerates backend APIs, storage interfaces, UI flows, observability, and documentation, so no entire domain of work appears missing.
+- **Detail gaps**: Rollout and migration steps (e.g., how to seed the new `admin_users` bucket in existing deployments, or how to back up/recover BoltDB changes) are not described, and automated/regression testing is only named in Phase 5.10 without outlining concrete scenarios.
+- **Implementation status**: Phase 5.1–5.2 code exists (`internal/admin`, `internal/storage`, `cmd/kproxy/main.go`), but the listed dependency on `gorilla/sessions` never landed—either adopt it or update the stack assumptions. Later API/UI phases remain unstarted.
+
 ## Project Structure
 
 ```
@@ -250,20 +255,20 @@ These query methods will use BoltDB's index buckets for efficient filtering.
 ## Implementation Phases
 
 ### Phase 5.1: Foundation
-1. Add dependencies (gorilla/mux, gorilla/sessions, JWT, bcrypt)
-2. Create `internal/admin` package structure
-3. Add AdminUserStore interface and BoltDB implementation
-4. Implement authentication (password hashing, JWT, sessions)
-5. Implement middleware (auth, logging, rate limiting)
-6. Create basic HTTP server
+1. Add dependencies (gorilla/mux, gorilla/sessions, JWT, bcrypt) — pending `gorilla/sessions` import in `go.mod`
+2. [x] Create `internal/admin` package structure (`internal/admin/*.go`, static assets)
+3. [x] Add AdminUserStore interface and BoltDB implementation (`internal/storage/store.go`, `internal/storage/bolt/admin_user_store.go`)
+4. [x] Implement authentication (password hashing, JWT, sessions) (`internal/admin/auth.go`)
+5. [x] Implement middleware (auth, logging, rate limiting) (`internal/admin/middleware.go`)
+6. [x] Create basic HTTP server (`internal/admin/server.go`)
 
 ### Phase 5.2: Authentication & UI Shell
-7. Implement login/logout handlers
-8. Create initial admin user from config
-9. Build HTML templates (layout, login, dashboard shell)
-10. Implement web handlers for basic pages
-11. Set up static asset serving
-12. Test authentication flow
+7. [x] Implement login/logout handlers (`internal/admin/handlers.go`)
+8. [x] Create initial admin user from config (`internal/admin/init.go`, `cmd/kproxy/main.go`)
+9. [x] Build HTML templates (layout, login, dashboard shell) (`internal/admin/static/templates/*.html`)
+10. [x] Implement web handlers for basic pages (`internal/admin/server.go`)
+11. [x] Set up static asset serving (`internal/admin/server.go`, `internal/admin/static`)
+12. Test authentication flow — pending automated/manual verification evidence
 
 ### Phase 5.3: Device Management
 13. Implement device API handlers using `store.Devices()` (CRUD)
@@ -304,12 +309,12 @@ These query methods will use BoltDB's index buckets for efficient filtering.
 ### Phase 5.9: System Control
 37. Implement system control endpoints
 38. Add settings page
-39. Implement password change
+39. [x] Implement password change (`internal/admin/handlers.go`, `/api/auth/change-password`)
 40. Add configuration viewer
 
 ### Phase 5.10: Integration & Testing
-41. Integrate admin server into main.go
-42. Update config.example.yaml
+41. [x] Integrate admin server into main.go (`cmd/kproxy/main.go`)
+42. [x] Update config.example.yaml (`configs/config.example.yaml`)
 43. Comprehensive testing
 44. Add Prometheus metrics for admin
 
