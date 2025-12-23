@@ -110,3 +110,167 @@ jobs:
         run: make test
         env:
           CGO_ENABLED: 1
+
+  playwright:
+    name: Playwright Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++
+
+      - name: Build KProxy
+        run: make build
+        env:
+          CGO_ENABLED: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install Python dependencies
+        working-directory: tests
+        run: |
+          uv pip install --system -r requirements.txt
+
+      - name: Install Playwright browsers
+        working-directory: tests
+        run: |
+          uv run playwright install --with-deps chromium
+
+      - name: Generate test CA certificates
+        run: |
+          mkdir -p /tmp/kproxy/ca
+          cd /tmp/kproxy/ca
+          # Generate root CA
+          openssl genrsa -out root-ca.key 4096
+          openssl req -x509 -new -nodes -key root-ca.key -sha256 -days 1 \
+            -out root-ca.crt \
+            -subj "/C=US/ST=Test/L=Test/O=KProxy Test/CN=KProxy Root CA"
+          # Generate intermediate CA
+          openssl genrsa -out intermediate-ca.key 4096
+          openssl req -new -key intermediate-ca.key \
+            -out intermediate-ca.csr \
+            -subj "/C=US/ST=Test/L=Test/O=KProxy Test/CN=KProxy Intermediate CA"
+          openssl x509 -req -in intermediate-ca.csr \
+            -CA root-ca.crt -CAkey root-ca.key -CAcreateserial \
+            -out intermediate-ca.crt -days 1 -sha256
+
+      - name: Create test config
+        run: |
+          mkdir -p /tmp/kproxy/data
+          cat > /tmp/kproxy/config.yaml << 'EOF'
+          server:
+            dns_port: 5353
+            http_port: 8080
+            https_port: 8443
+            admin_port: 8443
+            admin_domain: "localhost"
+            metrics_port: 9090
+            bind_address: "127.0.0.1"
+
+          dns:
+            upstream_servers:
+              - "8.8.8.8:53"
+            intercept_ttl: 60
+            bypass_ttl_cap: 300
+            block_ttl: 60
+            upstream_timeout: "5s"
+            global_bypass:
+              - "ocsp.*.com"
+              - "crl.*.com"
+
+          tls:
+            ca_cert: "/tmp/kproxy/ca/root-ca.crt"
+            ca_key: "/tmp/kproxy/ca/root-ca.key"
+            intermediate_cert: "/tmp/kproxy/ca/intermediate-ca.crt"
+            intermediate_key: "/tmp/kproxy/ca/intermediate-ca.key"
+            cert_cache_size: 100
+            cert_cache_ttl: "1h"
+            cert_validity: "1h"
+
+          storage:
+            type: "bolt"
+            path: "/tmp/kproxy/data/kproxy.bolt"
+
+          logging:
+            level: "info"
+            format: "json"
+            request_log_retention_days: 7
+
+          policy:
+            default_action: "allow"
+            default_allow: true
+            use_mac_address: false
+
+          usage_tracking:
+            inactivity_timeout: "2m"
+            reset_time: "00:00"
+            timezone: "UTC"
+
+          admin:
+            enabled: true
+            jwt_secret: "test-secret-key-change-in-production"
+            token_expiration: "24h"
+            initial_username: "admin"
+            initial_password: "changeme"
+            rate_limit: 100
+            rate_limit_window: "1m"
+          EOF
+
+      - name: Start KProxy
+        run: |
+          ./bin/kproxy -config /tmp/kproxy/config.yaml > /tmp/kproxy.log 2>&1 &
+          echo $! > /tmp/kproxy.pid
+          # Wait for server to start
+          timeout 30 bash -c 'until curl -k https://localhost:8443/health 2>/dev/null; do sleep 1; done' || (
+            echo "KProxy failed to start. Log output:"
+            cat /tmp/kproxy.log
+            exit 1
+          )
+          echo "KProxy started successfully"
+
+      - name: Run Playwright tests
+        working-directory: tests
+        run: |
+          uv run pytest -vv --headed --screenshot=only-on-failure
+        continue-on-error: true
+
+      - name: Stop KProxy
+        if: always()
+        run: |
+          if [ -f /tmp/kproxy.pid ]; then
+            kill $(cat /tmp/kproxy.pid) || true
+          fi
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-screenshots
+          path: tests/screenshots/
+          retention-days: 30
+
+      - name: Upload KProxy logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kproxy-logs
+          path: /tmp/kproxy.log
+          retention-days: 7
