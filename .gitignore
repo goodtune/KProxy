@@ -48,3 +48,7 @@ Thumbs.db
 
 # Config files with sensitive data
 config.local.yaml
+
+# GitHub workflows - temporarily ignored due to API permissions
+# These need to be added manually with proper GitHub permissions
+.github/workflows/
