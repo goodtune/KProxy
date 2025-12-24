@@ -1,17 +1,19 @@
 """
-Test KProxy policy enforcement by making HTTP/HTTPS requests through the proxy.
+Test KProxy policy enforcement by making HTTP/HTTPS requests to KProxy.
+
+KProxy is a transparent intercepting proxy, so requests are made directly
+to KProxy's host:port with the Host header set to the target domain.
 
 This test verifies that:
 1. Requests to www.example.com are initially blocked by policy
 2. After adding an allow rule, requests succeed
-3. HTTP and HTTPS proxying work correctly
+3. HTTP and HTTPS interception work correctly
 """
 import os
 import time
 
 import pytest
 import requests
-from requests.auth import HTTPProxyAuth
 
 
 # Environment configuration
@@ -19,18 +21,13 @@ ADMIN_URL = os.environ.get("ADMIN_URL", "https://localhost:8444")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "changeme")
 
-# Parse proxy endpoints from environment or use defaults
-PROXY_HOST = os.environ.get("PROXY_HOST", "localhost")
-HTTP_PROXY_PORT = os.environ.get("HTTP_PROXY_PORT", "8080")
-HTTPS_PROXY_PORT = os.environ.get("HTTPS_PROXY_PORT", "9443")
+# KProxy transparent proxy endpoints
+KPROXY_HOST = os.environ.get("KPROXY_HOST", "localhost")
+KPROXY_HTTP_PORT = os.environ.get("KPROXY_HTTP_PORT", "8080")
+KPROXY_HTTPS_PORT = os.environ.get("KPROXY_HTTPS_PORT", "9443")
 
-HTTP_PROXY = f"http://{PROXY_HOST}:{HTTP_PROXY_PORT}"
-HTTPS_PROXY = f"http://{PROXY_HOST}:{HTTPS_PROXY_PORT}"
-
-# Test target
+# Test target domain
 TEST_DOMAIN = "www.example.com"
-TEST_HTTP_URL = f"http://{TEST_DOMAIN}/"
-TEST_HTTPS_URL = f"https://{TEST_DOMAIN}/"
 
 
 class AdminClient:
@@ -162,13 +159,27 @@ def test_device(admin_client, test_profile):
         print(f"Warning: Failed to cleanup device: {e}")
 
 
-def make_proxy_request(url: str, proxies: dict, timeout: int = 5) -> requests.Response:
-    """Make a request through the proxy with timeout."""
+def make_kproxy_request(host: str, port: str, target_domain: str, use_https: bool = False, timeout: int = 5) -> requests.Response:
+    """
+    Make a request to KProxy with the target domain in the Host header.
+
+    KProxy is a transparent intercepting proxy, so we make requests directly
+    to KProxy's IP:port with the Host header set to the target domain.
+    """
+    # Build the URL to KProxy's endpoint
+    protocol = "https" if use_https else "http"
+    url = f"{protocol}://{host}:{port}/"
+
+    # Set the Host header to the target domain
+    headers = {
+        "Host": target_domain
+    }
+
     try:
         response = requests.get(
             url,
-            proxies=proxies,
-            verify=False,  # Accept self-signed certs
+            headers=headers,
+            verify=False,  # Accept self-signed certs from KProxy
             timeout=timeout,
             allow_redirects=True
         )
@@ -200,11 +211,14 @@ def test_http_blocking_and_allowing(admin_client, test_profile, test_device):
     4. Removes the allow rule
     5. Verifies blocking is restored
     """
-    proxies = {"http": HTTP_PROXY}
-
     # Step 1: Verify blocking (default_allow=False, no allow rules)
-    print(f"\n1. Testing HTTP blocking to {TEST_HTTP_URL}")
-    response = make_proxy_request(TEST_HTTP_URL, proxies)
+    print(f"\n1. Testing HTTP blocking to {TEST_DOMAIN}")
+    response = make_kproxy_request(
+        host=KPROXY_HOST,
+        port=KPROXY_HTTP_PORT,
+        target_domain=TEST_DOMAIN,
+        use_https=False
+    )
 
     # With blocking, we expect either:
     # - Status 403 (Forbidden) from KProxy block page
@@ -233,7 +247,12 @@ def test_http_blocking_and_allowing(admin_client, test_profile, test_device):
 
     # Step 3: Verify request now succeeds
     print(f"3. Testing HTTP request after allow rule")
-    response = make_proxy_request(TEST_HTTP_URL, proxies)
+    response = make_kproxy_request(
+        host=KPROXY_HOST,
+        port=KPROXY_HTTP_PORT,
+        target_domain=TEST_DOMAIN,
+        use_https=False
+    )
 
     assert response.status_code == 200, \
         f"Expected 200 after allow rule, got {response.status_code}"
@@ -252,7 +271,12 @@ def test_http_blocking_and_allowing(admin_client, test_profile, test_device):
 
     # Step 5: Verify blocking is restored
     print(f"5. Verifying blocking is restored")
-    response = make_proxy_request(TEST_HTTP_URL, proxies)
+    response = make_kproxy_request(
+        host=KPROXY_HOST,
+        port=KPROXY_HTTP_PORT,
+        target_domain=TEST_DOMAIN,
+        use_https=False
+    )
 
     assert response.status_code in [0, 403, 502, 503], \
         f"Expected blocking response after rule removal, got {response.status_code}"
@@ -266,11 +290,14 @@ def test_https_blocking_and_allowing(admin_client, test_profile, test_device):
 
     This test verifies that HTTPS interception and policy enforcement work correctly.
     """
-    proxies = {"https": HTTPS_PROXY}
-
     # Step 1: Verify blocking
-    print(f"\n1. Testing HTTPS blocking to {TEST_HTTPS_URL}")
-    response = make_proxy_request(TEST_HTTPS_URL, proxies)
+    print(f"\n1. Testing HTTPS blocking to {TEST_DOMAIN}")
+    response = make_kproxy_request(
+        host=KPROXY_HOST,
+        port=KPROXY_HTTPS_PORT,
+        target_domain=TEST_DOMAIN,
+        use_https=True
+    )
 
     assert response.status_code in [0, 403, 502, 503], \
         f"Expected blocking response, got {response.status_code}"
@@ -292,7 +319,12 @@ def test_https_blocking_and_allowing(admin_client, test_profile, test_device):
 
     # Step 3: Verify request succeeds
     print(f"3. Testing HTTPS request after allow rule")
-    response = make_proxy_request(TEST_HTTPS_URL, proxies)
+    response = make_kproxy_request(
+        host=KPROXY_HOST,
+        port=KPROXY_HTTPS_PORT,
+        target_domain=TEST_DOMAIN,
+        use_https=True
+    )
 
     assert response.status_code == 200, \
         f"Expected 200 after allow rule, got {response.status_code}"
@@ -314,8 +346,6 @@ def test_wildcard_domain_matching(admin_client, test_profile, test_device):
 
     This verifies that rules like '*.example.com' properly match subdomains.
     """
-    proxies = {"http": HTTP_PROXY}
-
     # Add wildcard allow rule for *.example.com
     print(f"\n1. Adding wildcard allow rule for *.example.com")
     rule = admin_client.create_rule(
@@ -331,7 +361,12 @@ def test_wildcard_domain_matching(admin_client, test_profile, test_device):
 
     # Test that www.example.com is allowed
     print(f"2. Testing that www.example.com matches wildcard")
-    response = make_proxy_request(TEST_HTTP_URL, proxies)
+    response = make_kproxy_request(
+        host=KPROXY_HOST,
+        port=KPROXY_HTTP_PORT,
+        target_domain=TEST_DOMAIN,
+        use_https=False
+    )
 
     assert response.status_code == 200, \
         f"Expected 200 for www.example.com with *.example.com rule, got {response.status_code}"

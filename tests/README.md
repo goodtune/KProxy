@@ -89,7 +89,13 @@ container's exposed ports.
 ## Proxy Policy Tests
 
 The `test_proxy_policy.py` file contains tests that verify KProxy's actual proxy
-functionality and policy enforcement:
+functionality and policy enforcement.
+
+**Important**: KProxy is a **transparent intercepting proxy**, not a forward proxy.
+This means:
+- Requests are made **directly to KProxy's IP:port**
+- The **Host header** specifies the target domain (e.g., `www.example.com`)
+- KProxy intercepts the request, applies policy, and proxies to the real destination
 
 ### Test Coverage
 
@@ -105,26 +111,45 @@ functionality and policy enforcement:
 # Run proxy tests only
 pytest tests/test_proxy_policy.py -v -m proxy
 
-# Run with custom proxy endpoints
-PROXY_HOST=localhost \
-HTTP_PROXY_PORT=8080 \
-HTTPS_PROXY_PORT=9443 \
+# Run with custom KProxy endpoints
+KPROXY_HOST=localhost \
+KPROXY_HTTP_PORT=8080 \
+KPROXY_HTTPS_PORT=9443 \
 pytest tests/test_proxy_policy.py -v
 ```
 
 ### Additional Environment Variables
 
-- `PROXY_HOST` – Proxy server host (default `localhost`)
-- `HTTP_PROXY_PORT` – HTTP proxy port (default `8080`)
-- `HTTPS_PROXY_PORT` – HTTPS proxy port (default `9443`)
+- `KPROXY_HOST` – KProxy server host (default `localhost`)
+- `KPROXY_HTTP_PORT` – KProxy HTTP port (default `8080`)
+- `KPROXY_HTTPS_PORT` – KProxy HTTPS port (default `9443`)
+
+### How It Works
+
+The tests make requests **directly to KProxy** with the Host header set:
+
+```python
+# Example: HTTP request to www.example.com via KProxy
+response = requests.get(
+    "http://localhost:8080/",
+    headers={"Host": "www.example.com"}
+)
+```
+
+KProxy:
+1. Receives the request on port 8080
+2. Reads the Host header to determine target domain
+3. Applies policy rules based on device and domain
+4. Either blocks the request or proxies it to the real `www.example.com`
+5. Returns the response (or a block page)
 
 ### What the Tests Do
 
 1. **Setup**: Create a test profile with `default_allow=false` (block by default)
 2. **Create Device**: Register a test device using the blocking profile
-3. **Test Blocking**: Make HTTP/HTTPS requests through the proxy, verify they're blocked
-4. **Add Allow Rule**: Create an allow rule for `www.example.com`
-5. **Test Allowing**: Verify requests now succeed through the proxy
+3. **Test Blocking**: Make HTTP/HTTPS requests to KProxy with Host header, verify they're blocked
+4. **Add Allow Rule**: Create an allow rule for `www.example.com` via admin API
+5. **Test Allowing**: Verify requests now succeed and return example.com content
 6. **Cleanup**: Remove rules and verify blocking is restored
 
-These tests verify the core proxy functionality end-to-end.
+These tests verify the complete transparent proxy workflow end-to-end.
