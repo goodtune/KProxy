@@ -1,0 +1,66 @@
+server:
+  dns_port: 1053
+  dns_enable_udp: false
+  dns_enable_tcp: false
+  http_port: 8080
+  https_port: 9443
+  admin_port: 8444
+  admin_domain: "localhost"
+  metrics_port: 9090
+  bind_address: "0.0.0.0"
+
+dns:
+  upstream_servers:
+    - "8.8.8.8:53"
+    - "1.1.1.1:53"
+  intercept_ttl: 60
+  bypass_ttl_cap: 300
+  block_ttl: 60
+  upstream_timeout: "5s"
+  global_bypass: []
+
+tls:
+  ca_cert: "/etc/kproxy/ca/root-ca.crt"
+  ca_key: "/etc/kproxy/ca/root-ca.key"
+  intermediate_cert: "/etc/kproxy/ca/intermediate-ca.crt"
+  intermediate_key: "/etc/kproxy/ca/intermediate-ca.key"
+  cert_cache_size: 128
+  cert_cache_ttl: "1h"
+  cert_validity: "24h"
+
+storage:
+  type: "bolt"
+  path: "/var/lib/kproxy/kproxy.bolt"
+
+logging:
+  level: "info"
+  format: "json"
+  request_log_retention_days: 7
+
+policy:
+  default_action: "allow"
+  default_allow: true
+  use_mac_address: false
+  arp_cache_ttl: "5m"
+
+usage_tracking:
+  inactivity_timeout: "5m"
+  min_session_duration: "10s"
+  daily_reset_time: "00:00"
+
+response_modification:
+  enabled: false
+  disabled_hosts: []
+  allowed_content_types:
+    - "text/html"
+
+admin:
+  enabled: true
+  port: 8444
+  bind_address: "0.0.0.0"
+  initial_username: "admin"
+  initial_password: "changeme"
+  jwt_secret: "test-secret-change-me"
+  session_timeout: "24h"
+  rate_limit: 100
+  rate_limit_window: "1m"
