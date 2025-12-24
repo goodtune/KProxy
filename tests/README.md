@@ -1,10 +1,13 @@
 # KProxy Admin Interface Tests
 
 Playwright-based end-to-end tests for the KProxy admin interface using Python.
+The suite deliberately runs as one long browser session so that data created in
+earlier steps (profiles, devices, etc.) can be exercised and cleaned up later
+in the flow.
 
 ## Setup
 
-1. **Install dependencies with uv**:
+1. **Install dependencies with uv** (run from the repository root):
    ```bash
    uv pip install -r requirements.txt
    ```
@@ -16,71 +19,55 @@ Playwright-based end-to-end tests for the KProxy admin interface using Python.
 
 ## Running Tests
 
-### Preferred: Isolated container runtime
+### Preferred: isolated container runtime
 
-Use `tox` with `tox-docker` to build the kproxy binary, run it inside a disposable container with a pristine data directory, and execute the Playwright suite against the exposed admin port:
+`tox` (via the `playwright` env) builds the kproxy binary, launches it inside a
+throw‑away container, and runs the browser test against the exposed admin port.
+Use the following command for verbose local runs (the trailing `-- -v` passes
+`-v` through to `pytest`):
 
 ```bash
-tox -e playwright
+tox -vv -- -v
 ```
 
-`tox-docker` exposes the following environment variables with host/port pairs for services inside the container:
+If you prefer not to use tox, ensure KProxy is running locally with the admin
+interface on `https://localhost:8443` (or set `ADMIN_URL` / `ADMIN_HTTPS_PORT`
+to the appropriate origin) and run:
 
-- `APP_HTTP_PORT` – HTTP proxy port (8080/tcp)
-- `APP_HTTPS_PORT` – HTTPS proxy port (9443/tcp)
-- `APP_DNS_PORT` – DNS/TCP testing port (1053/tcp)
-- `ADMIN_HTTPS_PORT` – Admin interface HTTPS port (8444/tcp)
-
-Tests automatically read `ADMIN_HTTPS_PORT` to construct the correct base URL, so no manual configuration is needed.
-
-### Manual host runtime
-
-Make sure KProxy is running locally with the admin interface enabled on `https://localhost:8444`.
-
-### Run all tests:
 ```bash
-uv run pytest
+uv run pytest -v tests/test_admin_e2e.py
 ```
 
-### Run tests with browser visible (headed mode):
-```bash
-uv run pytest --headed
-```
+Headed/slow‑mo executions for debugging use the usual Playwright flags, for
+example:
 
-### Run a specific test:
 ```bash
-uv run pytest test_admin_login.py::test_login_redirects_to_dashboard
-```
-
-### Run tests with more verbose output:
-```bash
-uv run pytest -vv
-```
-
-### Debug mode (opens Playwright Inspector):
-```bash
-uv run pytest --headed --slowmo 1000
+uv run pytest tests/test_admin_e2e.py --headed --slowmo 500
 ```
 
 ## Test Coverage
 
-- `test_login_page_loads`: Verifies login page renders correctly
-- `test_login_redirects_to_dashboard`: Tests successful login and redirect (**this test validates the reported issue**)
-- `test_login_with_invalid_credentials`: Tests error handling for bad credentials
-- `test_dashboard_requires_authentication`: Verifies auth middleware protects dashboard
-- `test_logout_clears_session`: Tests logout functionality and session cleanup
+All coverage lives in `tests/test_admin_e2e.py::test_admin_full_flow`.  
+The test uses `pytest-subtests` to break the run into descriptive steps while
+sharing the same authenticated browser session.
+
+The flow currently asserts:
+
+- Login view rendering, invalid credential handling, and a successful login
+- Dashboard tiles and navigation links
+- Profile creation, tab switching, editing, and deletion (after associated
+  devices are removed)
+- Device creation, editing, validation/cancel paths, and deletion
+- Logs UI (request ↔ DNS tabs, filters, refresh, clear logs modal)
+- Sessions UI (tab switching, refresh button)
+- Sidebar navigation between sections
+- Logout plus a guard that redirects unauthenticated users back to `/admin/login`
 
 ## Screenshots
 
-Tests automatically capture screenshots at key points during execution. Screenshots are saved to the `screenshots/` directory with descriptive names:
-
-- `01_login_page_loaded.png` - Initial login page
-- `02_before_login.png` - Login page before entering credentials
-- `03_credentials_filled.png` - After filling in username/password
-- `04_after_submit.png` - Immediately after clicking submit
-- `05_dashboard_page_BUG.png` - Dashboard page showing the bug
-- `06_BUG_login_form_still_visible.png` - Captured when login form appears on dashboard (the bug)
-- ... and more
+Screenshots are saved to the `screenshots/` directory using incremented filenames
+(`01_login_page.png`, `02_invalid_login.png`, etc.) so the entire user journey
+can be reviewed chronologically after each run.
 
 Screenshots are particularly useful for:
 - Visual confirmation of test failures
@@ -90,18 +77,11 @@ Screenshots are particularly useful for:
 
 ## Configuration
 
-Test configuration is in `test_admin_login.py`:
-- `ADMIN_URL`: Admin interface URL (default: `https://localhost:8443`)
-- `ADMIN_USERNAME`: Admin username (default: `admin`)
-- `ADMIN_PASSWORD`: Admin password (default: `changeme`)
+Environment variables:
 
-## Known Issue Being Tested
+- `ADMIN_URL` – Complete admin origin (default `https://localhost:8443`)
+- `ADMIN_USERNAME` – Username for login (default `admin`)
+- `ADMIN_PASSWORD` – Password for login (default `changeme`)
 
-The test `test_login_redirects_to_dashboard` specifically validates the issue where:
-1. User logs in successfully at `/admin/login`
-2. Browser redirects to `/admin/dashboard`
-3. **BUG**: Dashboard shows the login form instead of dashboard content
-
-The test checks that:
-- The login form (`#loginForm`) is NOT visible on the dashboard
-- Dashboard-specific elements (sidebar, stats cards, logout button) ARE visible
+When running under `tox`, these values are derived automatically from the
+container’s exposed ports.

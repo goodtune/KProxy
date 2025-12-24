@@ -10,6 +10,7 @@
             </p>
         </div>
         <form class="mt-8 space-y-6" id="loginForm">
+            <input type="hidden" id="nextPath" value="{{.NextPath}}">
             <div class="rounded-md shadow-sm -space-y-px">
                 <div>
                     <label for="username" class="sr-only">Username</label>
@@ -49,6 +50,19 @@
 </div>
 
 <script>
+function resolveNextPath() {
+    const params = new URLSearchParams(window.location.search);
+    const paramNext = params.get('next');
+    if (paramNext && paramNext.startsWith('/')) {
+        return paramNext;
+    }
+    const hiddenValue = document.getElementById('nextPath')?.value;
+    if (hiddenValue && hiddenValue.startsWith('/')) {
+        return hiddenValue;
+    }
+    return '/admin/dashboard';
+}
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -67,7 +81,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         });
 
         if (response.ok) {
-            window.location.href = '/admin/dashboard';
+            window.location.href = resolveNextPath();
         } else {
             const data = await response.json();
             errorText.textContent = data.message || 'Login failed';

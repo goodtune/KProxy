@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/goodtune/kproxy/internal/admin/api"
@@ -254,9 +255,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	nextPath := r.URL.Query().Get("next")
+	if nextPath == "" || !strings.HasPrefix(nextPath, "/") {
+		nextPath = "/admin/dashboard"
+	}
 	data := map[string]interface{}{
-		"Title":  "Login",
-		"PageID": "login",
+		"Title":    "Login",
+		"PageID":   "login",
+		"NextPath": nextPath,
 	}
 	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to render login template")
