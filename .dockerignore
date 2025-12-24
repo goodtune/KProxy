@@ -1,0 +1,6 @@
+.DS_Store
+.github
+.tox
+ca/
+lib/
+dist/

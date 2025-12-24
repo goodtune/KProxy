@@ -126,220 +126,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download KProxy binary
-        uses: actions/download-artifact@v4
-        with:
-          name: kproxy-binary-1.24
-          path: bin/
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v2
 
-      - name: Make binary executable
-        run: chmod +x bin/kproxy
-
-      - name: Generate test CA certificates
-        run: |
-          mkdir -p /tmp/kproxy/ca
-          cd /tmp/kproxy/ca
-          # Generate root CA (ECDSA)
-          openssl ecparam -name prime256v1 -genkey -noout -out root-ca.key
-          openssl req -new -x509 -sha256 \
-            -key root-ca.key \
-            -out root-ca.crt \
-            -days 1 \
-            -subj "/C=US/ST=Test/L=Test/O=KProxy Test/CN=KProxy Root CA"
-          # Generate intermediate CA (ECDSA)
-          openssl ecparam -name prime256v1 -genkey -noout -out intermediate-ca.key
-          openssl req -new -sha256 \
-            -key intermediate-ca.key \
-            -out intermediate-ca.csr \
-            -subj "/C=US/ST=Test/L=Test/O=KProxy Test/CN=KProxy Intermediate CA"
-          # Create extension file for intermediate CA
-          cat > intermediate-ca.ext << 'EXTEOF'
-          basicConstraints = critical,CA:TRUE,pathlen:0
-          keyUsage = critical,keyCertSign,cRLSign
-          subjectKeyIdentifier = hash
-          authorityKeyIdentifier = keyid:always
-          EXTEOF
-          # Sign intermediate CA with root CA
-          openssl x509 -req -sha256 \
-            -in intermediate-ca.csr \
-            -CA root-ca.crt \
-            -CAkey root-ca.key \
-            -CAcreateserial \
-            -out intermediate-ca.crt \
-            -days 1 \
-            -extfile intermediate-ca.ext
-
-      - name: Install CA certificate as trusted
-        run: |
-          sudo cp /tmp/kproxy/ca/root-ca.crt /usr/local/share/ca-certificates/kproxy-test-ca.crt
-          sudo update-ca-certificates
-          echo "CA certificate installed and trusted"
-
-      - name: Create test config
-        run: |
-          mkdir -p /tmp/kproxy/data
-          cat > /tmp/kproxy/config.yaml << 'EOF'
-          server:
-            dns_port: 5353
-            http_port: 8080
-            https_port: 8443
-            admin_port: 8443
-            admin_domain: "localhost"
-            metrics_port: 9090
-            bind_address: "127.0.0.1"
-
-          dns:
-            upstream_servers:
-              - "8.8.8.8:53"
-            intercept_ttl: 60
-            bypass_ttl_cap: 300
-            block_ttl: 60
-            upstream_timeout: "5s"
-            global_bypass:
-              - "ocsp.*.com"
-              - "crl.*.com"
-
-          tls:
-            ca_cert: "/tmp/kproxy/ca/root-ca.crt"
-            ca_key: "/tmp/kproxy/ca/root-ca.key"
-            intermediate_cert: "/tmp/kproxy/ca/intermediate-ca.crt"
-            intermediate_key: "/tmp/kproxy/ca/intermediate-ca.key"
-            cert_cache_size: 100
-            cert_cache_ttl: "1h"
-            cert_validity: "1h"
-
-          storage:
-            type: "bolt"
-            path: "/tmp/kproxy/data/kproxy.bolt"
-
-          logging:
-            level: "info"
-            format: "json"
-            request_log_retention_days: 7
-
-          policy:
-            default_action: "allow"
-            default_allow: true
-            use_mac_address: false
-
-          usage_tracking:
-            inactivity_timeout: "2m"
-            reset_time: "00:00"
-            timezone: "UTC"
-
-          admin:
-            enabled: true
-            port: 8444
-            bind_address: "127.0.0.1"
-            jwt_secret: "test-secret-key-change-in-production"
-            token_expiration: "24h"
-            initial_username: "admin"
-            initial_password: "changeme"
-            rate_limit: 100
-            rate_limit_window: "1m"
-          EOF
-
-      - name: Start KProxy
-        run: |
-          ./bin/kproxy -config /tmp/kproxy/config.yaml > /tmp/kproxy.log 2>&1 &
-          echo $! > /tmp/kproxy.pid
-          # Wait for server to start
-          timeout 30 bash -c 'until curl https://localhost:8444/health 2>/dev/null; do sleep 1; done' || (
-            echo "KProxy failed to start. Log output:"
-            cat /tmp/kproxy.log
-            exit 1
-          )
-          echo "KProxy started successfully"
-          sleep 2  # Give it a moment to fully initialize
-
-      - name: Verify service is ready
-        run: |
-          echo "Verifying KProxy admin interface..."
-          echo "Current working directory: $(pwd)"
-          echo "Binary location: $(ls -la bin/kproxy)"
-          echo ""
-
-          # Check if process is running
-          if ps aux | grep -v grep | grep kproxy; then
-            echo "✓ KProxy process is running"
-          else
-            echo "✗ KProxy process not found!"
-            exit 1
-          fi
-
-          echo ""
-          echo "Testing endpoints..."
-
-          # Check health endpoint
-          echo "1. Testing /health endpoint..."
-          code=$(curl -sk -o /tmp/health.json -w "%{http_code}" https://localhost:8444/health)
-          if [ "$code" = "200" ]; then
-            echo "✓ Health endpoint responded (HTTP $code)"
-            cat /tmp/health.json
-          else
-            echo "✗ Health endpoint failed (HTTP $code)"
-            cat /tmp/health.json || true
-            echo "KProxy logs:"
-            tail -50 /tmp/kproxy.log
-            exit 1
-          fi
-
-          # Check login page
-          echo ""
-          echo "2. Testing /admin/login page..."
-          code=$(curl -sk -o /tmp/login.html -w "%{http_code}" https://localhost:8444/admin/login)
-          if [ "$code" = "200" ]; then
-            echo "✓ Login page is accessible (HTTP $code)"
-          else
-            echo "✗ Login page not accessible (HTTP $code)"
-            head -200 /tmp/login.html || true
-            echo "KProxy logs:"
-            tail -50 /tmp/kproxy.log
-            exit 1
-          fi
-
-          echo ""
-          echo "✓ Service verification complete - all checks passed!"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install Python dependencies
-        working-directory: tests
-        run: |
-          uv pip install --system -r requirements.txt
-
-      - name: Install Playwright browsers
-        working-directory: tests
-        run: |
-          uv run playwright install --with-deps chromium
-
-      - name: Run Playwright tests
-        working-directory: tests
-        run: |
-          mkdir -p screenshots
-          uv run pytest -vv --screenshot=only-on-failure
+      - name: Run Playwright suite via tox
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
+        run: uvx tox -vv -- -v --junitxml=pytest-results.xml
         continue-on-error: true
 
-      - name: Stop KProxy
+      - name: Publish Test Results
         if: always()
-        run: |
-          if [ -f /tmp/kproxy.pid ]; then
-            kill $(cat /tmp/kproxy.pid) || true
-          fi
-
-      - name: List screenshots for debugging
-        if: always()
-        run: |
-          echo "Screenshot directory contents:"
-          ls -la tests/screenshots/ || echo "No screenshots directory found"
+        uses: dorny/test-reporter@v2
+        with:
+          name: Playwright Results
+          path: pytest-results.xml
+          reporter: python-xunit
 
       - name: Upload test screenshots
         if: always()
@@ -349,12 +151,3 @@ jobs:
           path: tests/screenshots/**/*.png
           if-no-files-found: ignore
           retention-days: 30
-
-      - name: Upload KProxy logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: kproxy-logs
-          path: /tmp/kproxy.log
-          if-no-files-found: warn
-          retention-days: 7

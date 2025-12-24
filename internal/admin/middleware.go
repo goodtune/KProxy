@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -34,7 +35,7 @@ func AuthMiddleware(auth *AuthService) func(http.Handler) http.Handler {
 				// Try to get token from cookie
 				cookie, err := r.Cookie("admin_token")
 				if err != nil {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					handleUnauthorizedRequest(w, r, "Unauthorized")
 					return
 				}
 				authHeader = "Bearer " + cookie.Value
@@ -43,7 +44,7 @@ func AuthMiddleware(auth *AuthService) func(http.Handler) http.Handler {
 			// Extract token
 			parts := strings.Split(authHeader, " ")
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
+				handleUnauthorizedRequest(w, r, "Invalid authorization header")
 				return
 			}
 
@@ -52,7 +53,7 @@ func AuthMiddleware(auth *AuthService) func(http.Handler) http.Handler {
 			// Validate token
 			claims, err := auth.ValidateToken(token)
 			if err != nil {
-				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				handleUnauthorizedRequest(w, r, "Invalid token")
 				return
 			}
 
@@ -198,6 +199,26 @@ func (rl *RateLimiter) cleanup() {
 		}
 		rl.mu.Unlock()
 	}
+}
+
+// handleUnauthorizedRequest redirects HTML requests to login with ?next= while returning 401 for APIs.
+func handleUnauthorizedRequest(w http.ResponseWriter, r *http.Request, message string) {
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/admin/") {
+		next := r.URL.RequestURI()
+		target := "/admin/login"
+		if next != "" && next != "/admin/login" {
+			target = target + "?next=" + url.QueryEscape(next)
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
+
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeError(w, http.StatusUnauthorized, message)
+		return
+	}
+
+	http.Error(w, message, http.StatusUnauthorized)
 }
 
 // RateLimitMiddleware creates middleware for rate limiting.
