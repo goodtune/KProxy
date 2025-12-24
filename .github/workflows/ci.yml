@@ -132,4 +132,22 @@ jobs:
       - name: Run Playwright suite via tox
         env:
           PLAYWRIGHT_BROWSERS_PATH: 0
-        run: uvx tox -vv -- -v
+        run: uvx tox -vv -- -v --junitxml=pytest-results.xml
+        continue-on-error: true
+
+      - name: Publish Test Results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Playwright Results
+          path: pytest-results.xml
+          reporter: python-xunit
+
+      - name: Upload test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-screenshots
+          path: tests/screenshots/**/*.png
+          if-no-files-found: ignore
+          retention-days: 30
