@@ -84,4 +84,47 @@ Environment variables:
 - `ADMIN_PASSWORD` – Password for login (default `changeme`)
 
 When running under `tox`, these values are derived automatically from the
-container’s exposed ports.
+container's exposed ports.
+
+## Proxy Policy Tests
+
+The `test_proxy_policy.py` file contains tests that verify KProxy's actual proxy
+functionality and policy enforcement:
+
+### Test Coverage
+
+- **HTTP/HTTPS Blocking**: Verifies requests are blocked when no allow rule exists
+- **Allow Rule Application**: Tests that adding an allow rule permits traffic
+- **Policy Reload**: Ensures policy changes take effect after reload
+- **Rule Removal**: Confirms blocking is restored when allow rules are removed
+- **Wildcard Matching**: Tests that `*.example.com` rules match subdomains
+
+### Running Proxy Tests
+
+```bash
+# Run proxy tests only
+pytest tests/test_proxy_policy.py -v -m proxy
+
+# Run with custom proxy endpoints
+PROXY_HOST=localhost \
+HTTP_PROXY_PORT=8080 \
+HTTPS_PROXY_PORT=9443 \
+pytest tests/test_proxy_policy.py -v
+```
+
+### Additional Environment Variables
+
+- `PROXY_HOST` – Proxy server host (default `localhost`)
+- `HTTP_PROXY_PORT` – HTTP proxy port (default `8080`)
+- `HTTPS_PROXY_PORT` – HTTPS proxy port (default `9443`)
+
+### What the Tests Do
+
+1. **Setup**: Create a test profile with `default_allow=false` (block by default)
+2. **Create Device**: Register a test device using the blocking profile
+3. **Test Blocking**: Make HTTP/HTTPS requests through the proxy, verify they're blocked
+4. **Add Allow Rule**: Create an allow rule for `www.example.com`
+5. **Test Allowing**: Verify requests now succeed through the proxy
+6. **Cleanup**: Remove rules and verify blocking is restored
+
+These tests verify the core proxy functionality end-to-end.
