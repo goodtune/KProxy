@@ -396,6 +396,10 @@ func (h *RulesHandler) CreateBypassRule(w http.ResponseWriter, r *http.Request) 
 		rule.ID = generateID("bypass")
 	}
 
+	// Default new bypass rules to enabled
+	// Note: This means rules are enabled by default unless explicitly disabled in the request
+	rule.Enabled = true
+
 	now := time.Now()
 	rule.CreatedAt = now
 	rule.UpdatedAt = now

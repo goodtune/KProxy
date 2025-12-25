@@ -41,6 +41,7 @@ dns:
     - "*.ocsp.*"
     - "time.*.com"        # NTP-related
     - "time.*.gov"
+    - "_dns.resolver.arpa"
 
 tls:
   # CA certificate and key paths
