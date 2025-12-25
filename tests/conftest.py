@@ -8,32 +8,6 @@ import pytest
 from playwright.sync_api import BrowserContext, Page
 
 
-def pytest_addoption(parser):
-    """Add custom command line options."""
-    parser.addoption(
-        "--run-integration",
-        action="store_true",
-        default=False,
-        help="run integration tests that require a running KProxy instance",
-    )
-
-
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "integration: integration tests requiring running KProxy instance"
-    )
-
-
-def pytest_collection_modifyitems(config, items):
-    """Skip integration tests unless --run-integration is specified."""
-    if not config.getoption("--run-integration", default=False):
-        skip_integration = pytest.mark.skip(reason="need --run-integration option to run")
-        for item in items:
-            if "integration" in item.keywords:
-                item.add_marker(skip_integration)
-
-
 def _parse_endpoint(value: str) -> Tuple[str, str]:
     """Split tox-docker endpoint env values into host/port."""
     if "://" in value:

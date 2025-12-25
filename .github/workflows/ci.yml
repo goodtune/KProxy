@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+  checks: write
+  pull-requests: write
 
 jobs:
   test:
@@ -57,9 +59,19 @@ jobs:
           retention-days: 1
 
       - name: Run tests
-        run: make test
+        run: |
+          go test -v -race -cover -json ./... > testresults.json
         env:
           CGO_ENABLED: 1
+        continue-on-error: true
+
+      - name: Publish Test Results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Go Test Results (Go ${{ matrix.go-version }})
+          path: testresults.json
+          reporter: golang-json
 
   lint:
     name: Lint
@@ -114,9 +126,19 @@ jobs:
           CGO_ENABLED: 1
 
       - name: Run tests
-        run: make test
+        run: |
+          go test -v -race -cover -json ./... > testresults.json
         env:
           CGO_ENABLED: 1
+        continue-on-error: true
+
+      - name: Publish Test Results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Go Test Results (${{ matrix.os }}, Go ${{ matrix.go-version }})
+          path: testresults.json
+          reporter: golang-json
 
   playwright:
     name: Playwright Tests
