@@ -779,18 +779,3 @@ func newTestEngine(t *testing.T, store storage.Store) *Engine {
 
 	return engine
 }
-
-// matchCIDR checks if an IP address matches a CIDR range.
-func matchCIDR(ip string, cidr string) bool {
-	ipAddr := net.ParseIP(ip)
-	if ipAddr == nil {
-		return false
-	}
-
-	_, ipNet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return false
-	}
-
-	return ipNet.Contains(ipAddr)
-}
