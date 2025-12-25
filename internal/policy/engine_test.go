@@ -752,6 +752,153 @@ func TestPolicyEnforcement_PathMatching(t *testing.T) {
 	}
 }
 
+// TestPolicyEnforcement_DynamicRuleChanges tests adding and removing rules dynamically.
+// This simulates the scenarios from the Python integration tests:
+// 1. Device with default block - requests blocked
+// 2. Add allow rule - requests allowed
+// 3. Remove rule - blocking restored
+func TestPolicyEnforcement_DynamicRuleChanges(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+
+	// Create profile with default block
+	profile := storage.Profile{
+		ID:           "test-profile",
+		Name:         "Test Profile",
+		DefaultAllow: false, // Block by default
+	}
+	if err := store.Profiles().Upsert(context.Background(), profile); err != nil {
+		t.Fatalf("failed to create profile: %v", err)
+	}
+
+	// Create device with this profile
+	device := storage.Device{
+		ID:          "test-device",
+		Name:        "Test Device",
+		Identifiers: []string{childClientIP}, // Use child client IP
+		ProfileID:   "test-profile",
+		Active:      true,
+	}
+	if err := store.Devices().Upsert(context.Background(), device); err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+
+	engine := newTestEngine(t, store)
+
+	// Step 1: Verify blocking with no rules (default_allow=false)
+	t.Run("initial_blocking", func(t *testing.T) {
+		req := &ProxyRequest{
+			ClientIP: net.ParseIP(childClientIP),
+			Host:     testDomain,
+			Path:     "/",
+		}
+		decision := engine.Evaluate(req)
+		if decision.Action != ActionBlock {
+			t.Errorf("Expected BLOCK with default_allow=false, got %v (reason: %s)",
+				decision.Action, decision.Reason)
+		}
+	})
+
+	// Step 2: Add allow rule for www.example.com
+	rule := storage.Rule{
+		ID:        "test-rule",
+		ProfileID: "test-profile",
+		Domain:    testDomain,
+		Paths:     []string{},
+		Action:    storage.ActionAllow,
+		Priority:  100,
+	}
+	if err := store.Rules().Upsert(context.Background(), rule); err != nil {
+		t.Fatalf("failed to create rule: %v", err)
+	}
+
+	// Reload policy engine to pick up new rule
+	if err := engine.Reload(); err != nil {
+		t.Fatalf("failed to reload engine: %v", err)
+	}
+
+	// Step 3: Verify request is now allowed
+	t.Run("allowed_after_rule_added", func(t *testing.T) {
+		req := &ProxyRequest{
+			ClientIP: net.ParseIP(childClientIP),
+			Host:     testDomain,
+			Path:     "/",
+		}
+		decision := engine.Evaluate(req)
+		if decision.Action != ActionAllow {
+			t.Errorf("Expected ALLOW after adding rule, got %v (reason: %s)",
+				decision.Action, decision.Reason)
+		}
+	})
+
+	// Step 4: Remove the allow rule
+	if err := store.Rules().Delete(context.Background(), "test-profile", "test-rule"); err != nil {
+		t.Fatalf("failed to delete rule: %v", err)
+	}
+
+	// Reload policy engine to pick up rule removal
+	if err := engine.Reload(); err != nil {
+		t.Fatalf("failed to reload engine: %v", err)
+	}
+
+	// Step 5: Verify blocking is restored
+	t.Run("blocking_restored_after_rule_removed", func(t *testing.T) {
+		req := &ProxyRequest{
+			ClientIP: net.ParseIP(childClientIP),
+			Host:     testDomain,
+			Path:     "/",
+		}
+		decision := engine.Evaluate(req)
+		if decision.Action != ActionBlock {
+			t.Errorf("Expected BLOCK after removing rule, got %v (reason: %s)",
+				decision.Action, decision.Reason)
+		}
+	})
+
+	// Step 6: Test wildcard rule matching (from test_wildcard_domain_matching)
+	wildcardRule := storage.Rule{
+		ID:        "wildcard-rule",
+		ProfileID: "test-profile",
+		Domain:    "*.example.com",
+		Paths:     []string{},
+		Action:    storage.ActionAllow,
+		Priority:  100,
+	}
+	if err := store.Rules().Upsert(context.Background(), wildcardRule); err != nil {
+		t.Fatalf("failed to create wildcard rule: %v", err)
+	}
+
+	if err := engine.Reload(); err != nil {
+		t.Fatalf("failed to reload engine: %v", err)
+	}
+
+	t.Run("wildcard_rule_matches_subdomain", func(t *testing.T) {
+		req := &ProxyRequest{
+			ClientIP: net.ParseIP(childClientIP),
+			Host:     testDomain, // www.example.com
+			Path:     "/",
+		}
+		decision := engine.Evaluate(req)
+		if decision.Action != ActionAllow {
+			t.Errorf("Expected ALLOW for www.example.com with *.example.com rule, got %v (reason: %s)",
+				decision.Action, decision.Reason)
+		}
+	})
+
+	t.Run("wildcard_rule_does_not_match_apex", func(t *testing.T) {
+		req := &ProxyRequest{
+			ClientIP: net.ParseIP(childClientIP),
+			Host:     testApexDomain, // example.com
+			Path:     "/",
+		}
+		decision := engine.Evaluate(req)
+		if decision.Action != ActionBlock {
+			t.Errorf("Expected BLOCK for example.com with *.example.com rule (wildcard needs subdomain), got %v (reason: %s)",
+				decision.Action, decision.Reason)
+		}
+	})
+}
+
 // Helper functions
 
 func openTestStore(t *testing.T) storage.Store {

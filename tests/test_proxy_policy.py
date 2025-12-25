@@ -4,10 +4,12 @@ Test KProxy policy enforcement by making HTTP/HTTPS requests to KProxy.
 KProxy is a transparent intercepting proxy, so requests are made directly
 to KProxy's host:port with the Host header set to the target domain.
 
-This test verifies that:
-1. Requests to www.example.com are initially blocked by policy
-2. After adding an allow rule, requests succeed
-3. HTTP and HTTPS interception work correctly
+These are integration tests that require a running KProxy instance.
+The same scenarios are covered in Golang unit tests in internal/policy/engine_test.go
+(see TestPolicyEnforcement_DynamicRuleChanges).
+
+These integration tests are skipped by default. To run them against a live instance:
+  pytest tests/test_proxy_policy.py --run-integration
 """
 import os
 import time
@@ -199,6 +201,7 @@ def make_kproxy_request(host: str, port: str, target_domain: str, use_https: boo
         return ErrorResponse(e)
 
 
+@pytest.mark.integration
 @pytest.mark.proxy
 def test_http_blocking_and_allowing(admin_client, test_profile, test_device):
     """
@@ -283,6 +286,7 @@ def test_http_blocking_and_allowing(admin_client, test_profile, test_device):
     print(f"   ✓ Blocking restored (status: {response.status_code})")
 
 
+@pytest.mark.integration
 @pytest.mark.proxy
 def test_https_blocking_and_allowing(admin_client, test_profile, test_device):
     """
@@ -339,6 +343,7 @@ def test_https_blocking_and_allowing(admin_client, test_profile, test_device):
     print("   ✓ Rule removed")
 
 
+@pytest.mark.integration
 @pytest.mark.proxy
 def test_wildcard_domain_matching(admin_client, test_profile, test_device):
     """
