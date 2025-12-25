@@ -8,6 +8,7 @@ import (
 
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/storage/bolt"
+	"github.com/rs/zerolog"
 )
 
 // Test network configuration
@@ -767,8 +768,11 @@ func openTestStore(t *testing.T) storage.Store {
 func newTestEngine(t *testing.T, store storage.Store) *Engine {
 	t.Helper()
 
+	// Create a disabled logger for tests
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+
 	// Create engine with default block action and MAC address matching
-	engine, err := NewEngine(store, []string{}, "block", true)
+	engine, err := NewEngine(store, []string{}, "block", true, logger)
 	if err != nil {
 		t.Fatalf("failed to create engine: %v", err)
 	}
