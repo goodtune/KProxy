@@ -53,12 +53,11 @@ limit_exceeded(limit_id) if {
 
 # Get first exceeded limit (for decision making)
 first_exceeded_limit := limit if {
-	some limit in applicable_limits
-	limit_exceeded(limit.id)
+	# Get all exceeded limits
+	exceeded := [l | some l in applicable_limits; limit_exceeded(l.id)]
+	count(exceeded) > 0
 	# Return first one found
-} {
-	# This syntax returns the first match
-	limit := [l | some l in applicable_limits; limit_exceeded(l.id)][0]
+	limit := exceeded[0]
 }
 
 # Check if should inject timer

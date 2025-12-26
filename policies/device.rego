@@ -25,13 +25,15 @@ import data.kproxy.helpers
 identified_device := device if {
 	# Try MAC address first (most reliable)
 	input.use_mac_address
-	input.client_mac
-	device := device_by_mac[_]
+	input.client_mac != ""
+	count(device_by_mac) > 0
+	some device in device_by_mac
 }
 
 identified_device := device if {
 	# Fall back to IP/CIDR matching
-	device := device_by_ip[_]
+	count(device_by_ip) > 0
+	some device in device_by_ip
 }
 
 # MAC address lookup

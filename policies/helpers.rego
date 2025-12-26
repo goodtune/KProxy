@@ -106,6 +106,15 @@ ip_in_cidr(ip, cidr) if {
 }
 
 # Path matching with prefix and glob support
+# If rule_paths is null or empty, match all paths
+match_path(path, rule_paths) if {
+	rule_paths == null
+}
+
+match_path(path, rule_paths) if {
+	count(rule_paths) == 0
+}
+
 match_path(path, rule_paths) if {
 	# If rule_paths contains "*", match all paths
 	"*" in rule_paths
@@ -124,9 +133,4 @@ match_path(path, rule_paths) if {
 	# Convert to regex pattern
 	pattern := concat("", ["^", replace_wildcard(rule_path), "$"])
 	regex.match(pattern, path)
-}
-
-# Lower case utility
-lower(s) := lower_result if {
-	lower_result := lower(s)
 }

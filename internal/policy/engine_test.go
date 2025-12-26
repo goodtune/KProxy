@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/storage/bolt"
 	"github.com/rs/zerolog"
@@ -918,8 +919,14 @@ func newTestEngine(t *testing.T, store storage.Store) *Engine {
 	// Create a disabled logger for tests
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
 
+	// Create OPA config pointing to local policies directory
+	opaConfig := opa.Config{
+		Source:    "filesystem",
+		PolicyDir: "../../policies",
+	}
+
 	// Create engine with default block action and MAC address matching
-	engine, err := NewEngine(store, []string{}, "block", true, logger)
+	engine, err := NewEngine(store, []string{}, "block", true, opaConfig, logger)
 	if err != nil {
 		t.Fatalf("failed to create engine: %v", err)
 	}

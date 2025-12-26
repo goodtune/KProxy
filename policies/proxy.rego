@@ -151,11 +151,11 @@ time_allowed(profile) if {
 
 # Find first matching rule (by priority order - already sorted descending)
 first_matching_rule(profile) := rule if {
-	some rule in profile.rules
-	matches_rule(rule)
-} {
-	# Return first match
-	rule := [r | some r in profile.rules; matches_rule(r)][0]
+	# Get all matching rules
+	matching := [r | some r in profile.rules; matches_rule(r)]
+	count(matching) > 0
+	# Return first match (rules are already sorted by priority descending)
+	rule := matching[0]
 }
 
 # Check if request matches a rule
@@ -197,17 +197,17 @@ evaluate_rule(rule, profile) := {
 
 evaluate_rule(rule, profile) := {
 	"action": "ALLOW",
-	"reason": reason,
+	"reason": sprintf("matched rule: %s", [rule.id]),
 	"block_page": "",
 	"matched_rule_id": rule.id,
 	"category": rule.category,
-	"inject_timer": inject_timer,
-	"time_remaining_minutes": remaining,
-	"usage_limit_id": limit_id,
+	"inject_timer": false,
+	"time_remaining_minutes": 0,
+	"usage_limit_id": "",
 } if {
 	rule.action == "ALLOW"
 
-	# Check usage limits
+	# No usage limits or not exceeded
 	usage_input := {
 		"host": input.host,
 		"category": rule.category,
@@ -215,20 +215,8 @@ evaluate_rule(rule, profile) := {
 		"usage_stats": input.usage_stats,
 	}
 
-	# Not exceeded, but may have usage info
+	# Not exceeded
 	not usage.first_exceeded_limit with input as usage_input
-
-	# Determine if we should inject timer
-	inject_timer := usage.should_inject_timer with input as usage_input
-
-	# Get remaining time if applicable
-	remaining := get_remaining_time(usage_input, inject_timer)
-
-	# Get limit ID if applicable
-	limit_id := get_limit_id(profile, rule.category)
-
-	# Construct reason
-	reason := construct_allow_reason(rule, remaining, profile)
 }
 
 evaluate_rule(rule, profile) := {
