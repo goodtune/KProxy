@@ -1,70 +1,74 @@
-# Getting Started with Create React App
+# KProxy Admin UI
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This is the React-based admin interface for KProxy. The UI is built and embedded into the Go binary for easy deployment.
 
-## Available Scripts
+## Development
 
-In the project directory, you can run:
+To run the UI in development mode (with hot reload):
 
-### `npm start`
+```bash
+cd admin-ui
+npm install
+npm start
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+The development server will start on `http://localhost:3000` and will proxy API requests to `https://localhost:8443/api`.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Building
 
-### `npm test`
+The UI is automatically built and embedded into the Go binary when you run:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+make build
+```
 
-### `npm run build`
+This will:
+1. Install npm dependencies
+2. Build the React app for production (`npm run build`)
+3. Copy the build to `web/admin-ui/build` for Go embedding
+4. Build the Go binary with the embedded UI
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Production
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+When served from the Go binary, the UI will be available at the root path (`/`) and will use relative API paths (`/api/*`).
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## API Configuration
 
-### `npm run eject`
+The UI connects to the API using environment-aware configuration:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+- **Development** (`npm start`): Uses `https://localhost:8443/api`
+- **Production** (embedded in Go): Uses `/api` (relative path)
+- **Custom**: Set `REACT_APP_API_URL` environment variable
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Project Structure
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```
+admin-ui/
+├── public/          # Static assets
+├── src/
+│   ├── components/  # Reusable React components
+│   ├── pages/       # Page components (Dashboard, Devices, etc.)
+│   ├── services/    # API service layer
+│   ├── App.js       # Main app component with routing
+│   └── App.css      # Global styles
+├── package.json     # Dependencies and scripts
+└── README.md        # This file
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Features
 
-## Learn More
+- **Authentication**: JWT-based login/logout
+- **Dashboard**: Overview statistics and metrics
+- **Devices**: Manage proxy devices (CRUD operations)
+- **Profiles**: Manage access profiles
+- **Rules**: Configure filtering rules (domain, time, usage limits)
+- **Logs**: View request and DNS logs
+- **Dark Theme**: Professional dark UI
+- **Responsive**: Works on mobile, tablet, and desktop
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Dependencies
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- React 19
+- React Router 7
+- Axios (HTTP client)
+- Create React App (build tooling)

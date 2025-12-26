@@ -7,6 +7,7 @@ import (
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/usage"
+	"github.com/goodtune/kproxy/web"
 	"github.com/rs/zerolog"
 )
 
@@ -153,4 +154,7 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			system.GET("/config", systemViews.GetConfig)
 		}
 	}
+
+	// Setup UI routes (must be last to handle SPA routing)
+	web.SetupUIRoutes(r)
 }

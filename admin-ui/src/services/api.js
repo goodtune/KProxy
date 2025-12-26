@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:8443/api';
+// Base API URL - configure via environment variable or use relative path for embedded mode
+// When served from the Go binary, use relative path. For development, use full URL.
+const API_BASE_URL = process.env.REACT_APP_API_URL || (
+  process.env.NODE_ENV === 'production' ? '/api' : 'https://localhost:8443/api'
+);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
