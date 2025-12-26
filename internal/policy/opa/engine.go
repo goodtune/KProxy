@@ -258,11 +258,12 @@ func (e *Engine) fetchPolicy(url string) ([]byte, error) {
 func (e *Engine) prepareDNSQuery() error {
 	ctx := context.Background()
 
-	// Build rego instance with all modules
-	r := rego.New(
-		rego.Query("data.kproxy.dns.action"),
-		e.withModules()...,
-	)
+	// Build rego options: query + modules
+	opts := []func(*rego.Rego){rego.Query("data.kproxy.dns.action")}
+	opts = append(opts, e.withModules()...)
+
+	// Build rego instance with all options
+	r := rego.New(opts...)
 
 	// Prepare the query
 	query, err := r.PrepareForEval(ctx)
@@ -280,11 +281,12 @@ func (e *Engine) prepareDNSQuery() error {
 func (e *Engine) prepareProxyQuery() error {
 	ctx := context.Background()
 
-	// Build rego instance with all modules
-	r := rego.New(
-		rego.Query("data.kproxy.proxy.decision"),
-		e.withModules()...,
-	)
+	// Build rego options: query + modules
+	opts := []func(*rego.Rego){rego.Query("data.kproxy.proxy.decision")}
+	opts = append(opts, e.withModules()...)
+
+	// Build rego instance with all options
+	r := rego.New(opts...)
 
 	// Prepare the query
 	query, err := r.PrepareForEval(ctx)
