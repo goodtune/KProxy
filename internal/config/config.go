@@ -72,10 +72,15 @@ type LoggingConfig struct {
 
 // PolicyConfig defines policy engine defaults
 type PolicyConfig struct {
-	DefaultAction string `mapstructure:"default_action"`
-	DefaultAllow  bool   `mapstructure:"default_allow"`
-	UseMACAddress bool   `mapstructure:"use_mac_address"`
-	ARPCacheTTL   string `mapstructure:"arp_cache_ttl"`
+	DefaultAction    string   `mapstructure:"default_action"`
+	DefaultAllow     bool     `mapstructure:"default_allow"`
+	UseMACAddress    bool     `mapstructure:"use_mac_address"`
+	ARPCacheTTL      string   `mapstructure:"arp_cache_ttl"`
+	OPAPolicyDir     string   `mapstructure:"opa_policy_dir"`
+	OPAPolicySource  string   `mapstructure:"opa_policy_source"`  // "filesystem" or "remote"
+	OPAPolicyURLs    []string `mapstructure:"opa_policy_urls"`    // URLs for remote policies
+	OPAHTTPTimeout   string   `mapstructure:"opa_http_timeout"`   // Timeout for HTTP requests
+	OPAHTTPRetries   int      `mapstructure:"opa_http_retries"`   // Number of retries
 }
 
 // UsageConfig defines usage tracking settings
@@ -190,6 +195,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("policy.default_allow", false)
 	v.SetDefault("policy.use_mac_address", true)
 	v.SetDefault("policy.arp_cache_ttl", "5m")
+	v.SetDefault("policy.opa_policy_dir", "/etc/kproxy/policies")
+	v.SetDefault("policy.opa_policy_source", "filesystem")
+	v.SetDefault("policy.opa_policy_urls", []string{})
+	v.SetDefault("policy.opa_http_timeout", "30s")
+	v.SetDefault("policy.opa_http_retries", 3)
 
 	// Usage tracking defaults
 	v.SetDefault("usage_tracking.inactivity_timeout", "2m")
