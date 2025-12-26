@@ -13,6 +13,7 @@ import (
 	"github.com/goodtune/kproxy/internal/admin"
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/config"
+	"github.com/goodtune/kproxy/internal/dhcp"
 	"github.com/goodtune/kproxy/internal/dns"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
@@ -171,6 +172,41 @@ func main() {
 		Str("addr", dnsConfig.ListenAddr).
 		Msg("DNS Server started")
 
+	// Initialize DHCP Server (if enabled)
+	var dhcpServer *dhcp.Server
+	if cfg.DHCP.Enabled {
+		dhcpConfig := dhcp.Config{
+			Enabled:        cfg.DHCP.Enabled,
+			Port:           cfg.DHCP.Port,
+			BindAddress:    cfg.DHCP.BindAddress,
+			ServerIP:       cfg.DHCP.ServerIP,
+			SubnetMask:     cfg.DHCP.SubnetMask,
+			Gateway:        cfg.DHCP.Gateway,
+			DNSServers:     cfg.DHCP.DNSServers,
+			LeaseTime:      parseDuration(cfg.DHCP.LeaseTime, 24*time.Hour),
+			RangeStart:     cfg.DHCP.RangeStart,
+			RangeEnd:       cfg.DHCP.RangeEnd,
+			BootFileName:   cfg.DHCP.BootFileName,
+			BootServerName: cfg.DHCP.BootServerName,
+			TFTPIP:         cfg.DHCP.TFTPIP,
+			BootURI:        cfg.DHCP.BootURI,
+		}
+
+		dhcpServer, err = dhcp.NewServer(dhcpConfig, policyEngine, store.DHCPLeases(), logger)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to initialize DHCP Server")
+		}
+
+		if err := dhcpServer.Start(); err != nil {
+			logger.Fatal().Err(err).Msg("Failed to start DHCP Server")
+		}
+
+		logger.Info().
+			Str("addr", fmt.Sprintf("%s:%d", cfg.DHCP.BindAddress, cfg.DHCP.Port)).
+			Str("range", fmt.Sprintf("%s-%s", cfg.DHCP.RangeStart, cfg.DHCP.RangeEnd)).
+			Msg("DHCP Server started")
+	}
+
 	// Initialize Proxy Server
 	proxyConfig := proxy.Config{
 		HTTPAddr:    fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort),
@@ -245,6 +281,9 @@ func main() {
 	// Log startup complete
 	logger.Info().Msg("KProxy startup complete")
 	logger.Info().Msgf("DNS Server: %s:%d", cfg.Server.BindAddress, cfg.Server.DNSPort)
+	if cfg.DHCP.Enabled {
+		logger.Info().Msgf("DHCP Server: %s:%d (range: %s-%s)", cfg.DHCP.BindAddress, cfg.DHCP.Port, cfg.DHCP.RangeStart, cfg.DHCP.RangeEnd)
+	}
 	logger.Info().Msgf("HTTP Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort)
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)
@@ -265,6 +304,12 @@ func main() {
 
 	if err := dnsServer.Stop(); err != nil {
 		logger.Error().Err(err).Msg("Error stopping DNS Server")
+	}
+
+	if dhcpServer != nil {
+		if err := dhcpServer.Stop(); err != nil {
+			logger.Error().Err(err).Msg("Error stopping DHCP Server")
+		}
 	}
 
 	if err := proxyServer.Stop(); err != nil {
