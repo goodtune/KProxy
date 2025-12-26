@@ -76,6 +76,7 @@ type PolicyConfig struct {
 	DefaultAllow  bool   `mapstructure:"default_allow"`
 	UseMACAddress bool   `mapstructure:"use_mac_address"`
 	ARPCacheTTL   string `mapstructure:"arp_cache_ttl"`
+	OPAPolicyDir  string `mapstructure:"opa_policy_dir"`
 }
 
 // UsageConfig defines usage tracking settings
@@ -190,6 +191,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("policy.default_allow", false)
 	v.SetDefault("policy.use_mac_address", true)
 	v.SetDefault("policy.arp_cache_ttl", "5m")
+	v.SetDefault("policy.opa_policy_dir", "/etc/kproxy/policies")
 
 	// Usage tracking defaults
 	v.SetDefault("usage_tracking.inactivity_timeout", "2m")

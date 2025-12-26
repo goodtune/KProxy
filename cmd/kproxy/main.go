@@ -96,6 +96,7 @@ func main() {
 		cfg.DNS.GlobalBypass,
 		defaultAction,
 		cfg.Policy.UseMACAddress,
+		cfg.Policy.OPAPolicyDir,
 		logger,
 	)
 	if err != nil {

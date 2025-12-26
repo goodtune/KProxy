@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
@@ -47,10 +46,14 @@ type Engine struct {
 	usageTracker  UsageTracker
 	logger        zerolog.Logger
 	mu            sync.RWMutex
+
+	// OPA engine for policy evaluation
+	opaEngine *opa.Engine
+	policyDir string
 }
 
 // NewEngine creates a new policy engine
-func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool, logger zerolog.Logger) (*Engine, error) {
+func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool, policyDir string, logger zerolog.Logger) (*Engine, error) {
 	e := &Engine{
 		deviceStore:   store.Devices(),
 		profileStore:  store.Profiles(),
@@ -64,6 +67,7 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 		bypassRules:   make([]*BypassRule, 0),
 		globalBypass:  globalBypass,
 		useMACAddress: useMACAddress,
+		policyDir:     policyDir,
 		logger:        logger.With().Str("component", "policy").Logger(),
 	}
 
@@ -76,6 +80,13 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 	default:
 		e.defaultAction = ActionBlock
 	}
+
+	// Initialize OPA engine
+	opaEngine, err := opa.NewEngine(policyDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize OPA engine: %w", err)
+	}
+	e.opaEngine = opaEngine
 
 	// Load initial data
 	if err := e.Reload(); err != nil {
@@ -407,279 +418,11 @@ func (e *Engine) identifyDevice(clientIP net.IP, clientMAC net.HardwareAddr) *De
 	return nil
 }
 
-// GetDNSAction determines the DNS action for a query
-func (e *Engine) GetDNSAction(clientIP net.IP, domain string) DNSAction {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	device := e.identifyDevice(clientIP, nil)
-
-	// 1. Check global bypass list (system-critical domains)
-	if e.isGlobalBypass(domain) {
-		return DNSActionBypass
-	}
-
-	// 2. Check bypass rules
-	for _, rule := range e.bypassRules {
-		if !rule.Enabled {
-			continue
-		}
-
-		// If rule has specific device IDs, only apply to those devices
-		if len(rule.DeviceIDs) > 0 {
-			// Skip if no device identified or device doesn't match
-			if device == nil || !contains(rule.DeviceIDs, device.ID) {
-				continue
-			}
-		}
-		// If device_ids is empty, rule applies to all requests
-
-		if e.matchDomain(domain, rule.Domain) {
-			return DNSActionBypass
-		}
-	}
-
-	// 3. Default: intercept and route through proxy
-	return DNSActionIntercept
-}
-
-// isGlobalBypass checks if a domain matches the global bypass list
-func (e *Engine) isGlobalBypass(domain string) bool {
-	for _, pattern := range e.globalBypass {
-		if e.matchDomain(domain, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchDomain checks if a domain matches a pattern (with wildcard support)
-func (e *Engine) matchDomain(domain, pattern string) bool {
-	// Normalize both to lowercase
-	domain = strings.ToLower(domain)
-	pattern = strings.ToLower(pattern)
-
-	// Exact match
-	if domain == pattern {
-		return true
-	}
-
-	// Wildcard matching
-	if strings.Contains(pattern, "*") {
-		// Convert glob pattern to regex
-		regexPattern := "^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), "\\*", ".*") + "$"
-		matched, err := regexp.MatchString(regexPattern, domain)
-		if err == nil && matched {
-			return true
-		}
-	}
-
-	// Suffix matching (e.g., pattern ".example.com" matches "sub.example.com")
-	if strings.HasPrefix(pattern, ".") {
-		if domain == pattern[1:] || strings.HasSuffix(domain, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // SetUsageTracker sets the usage tracker for the policy engine
 func (e *Engine) SetUsageTracker(tracker UsageTracker) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.usageTracker = tracker
-}
-
-// Evaluate evaluates a proxy request against the policy
-func (e *Engine) Evaluate(req *ProxyRequest) *PolicyDecision {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	device := e.identifyDevice(req.ClientIP, req.ClientMAC)
-	if device == nil {
-		return &PolicyDecision{
-			Action: e.defaultAction,
-			Reason: "unknown device",
-		}
-	}
-
-	profile := e.profiles[device.ProfileID]
-	if profile == nil {
-		return &PolicyDecision{
-			Action: e.defaultAction,
-			Reason: "no profile assigned",
-		}
-	}
-
-	// 1. Check time-of-access rules
-	if !e.isWithinAllowedTime(profile, time.Now()) {
-		return &PolicyDecision{
-			Action:    ActionBlock,
-			Reason:    "outside allowed hours",
-			BlockPage: "time_restriction",
-		}
-	}
-
-	// 2. Evaluate domain/path rules (already sorted by priority)
-	for _, rule := range profile.Rules {
-		if e.matchesRule(req.Host, req.Path, &rule) {
-			// 3. If allowing, check usage limits for this rule's category
-			if rule.Action == ActionAllow {
-				limitDecision := e.checkUsageLimits(device, profile, req.Host, rule.Category)
-				if limitDecision != nil {
-					return limitDecision
-				}
-			}
-
-			return &PolicyDecision{
-				Action:        rule.Action,
-				Reason:        fmt.Sprintf("matched rule: %s", rule.ID),
-				MatchedRuleID: rule.ID,
-				Category:      rule.Category,
-				InjectTimer:   rule.InjectTimer,
-			}
-		}
-	}
-
-	// 4. Apply default action
-	if profile.DefaultAllow {
-		return &PolicyDecision{Action: ActionAllow, Reason: "default allow"}
-	}
-	return &PolicyDecision{Action: ActionBlock, Reason: "default deny", BlockPage: "default_block"}
-}
-
-// checkUsageLimits checks if usage limits are exceeded
-func (e *Engine) checkUsageLimits(device *Device, profile *Profile, host, category string) *PolicyDecision {
-	if e.usageTracker == nil {
-		return nil // Usage tracking not enabled
-	}
-
-	for _, limit := range profile.UsageLimits {
-		// Check if this limit applies to the current request
-		if !e.limitApplies(&limit, host, category) {
-			continue
-		}
-
-		// Parse reset time
-		resetTime, err := time.Parse("15:04", limit.ResetTime)
-		if err != nil {
-			resetTime = time.Time{} // Default to midnight
-		}
-
-		// Get usage stats
-		limitDuration := time.Duration(limit.DailyMinutes) * time.Minute
-		stats, err := e.usageTracker.GetUsageStats(device.ID, limit.ID, limitDuration, resetTime)
-		if err != nil {
-			// Log error but don't block on tracking errors
-			continue
-		}
-
-		// Check if limit is exceeded
-		if stats.LimitExceeded {
-			return &PolicyDecision{
-				Action:       ActionBlock,
-				Reason:       fmt.Sprintf("daily usage limit exceeded: %v/%v used", stats.TodayUsage.Round(time.Minute), limitDuration),
-				BlockPage:    "usage_limit",
-				Category:     category,
-				UsageLimitID: limit.ID,
-			}
-		}
-
-		// Record activity for this limit (ignore errors to avoid blocking requests)
-		_ = e.usageTracker.RecordActivity(device.ID, limit.ID)
-
-		// Return decision with usage info for timer injection
-		return &PolicyDecision{
-			Action:        ActionAllow,
-			Reason:        fmt.Sprintf("usage limit: %v remaining of %v", stats.RemainingToday.Round(time.Minute), limitDuration),
-			InjectTimer:   limit.InjectTimer,
-			TimeRemaining: stats.RemainingToday,
-			Category:      category,
-			UsageLimitID:  limit.ID,
-		}
-	}
-
-	return nil
-}
-
-// limitApplies checks if a usage limit applies to the current request
-func (e *Engine) limitApplies(limit *UsageLimit, host, category string) bool {
-	// Check if limit matches by category
-	if limit.Category != "" && limit.Category == category {
-		return true
-	}
-
-	// Check if limit matches by specific domain
-	for _, domain := range limit.Domains {
-		if e.matchDomain(host, domain) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// matchesRule checks if a request matches a rule
-func (e *Engine) matchesRule(host, path string, rule *Rule) bool {
-	// Domain matching
-	if !e.matchDomain(host, rule.Domain) {
-		return false
-	}
-
-	// Path matching
-	if len(rule.Paths) == 0 || contains(rule.Paths, "*") {
-		return true
-	}
-
-	for _, rulePath := range rule.Paths {
-		if strings.HasPrefix(path, rulePath) {
-			return true
-		}
-		// Also support glob-style matching
-		if matched, _ := filepath.Match(rulePath, path); matched {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isWithinAllowedTime checks if current time is within allowed time windows
-func (e *Engine) isWithinAllowedTime(profile *Profile, now time.Time) bool {
-	if len(profile.TimeRules) == 0 {
-		return true // No time restrictions
-	}
-
-	weekday := int(now.Weekday())
-
-	for _, timeRule := range profile.TimeRules {
-		// Check if current day is in allowed days
-		if !containsInt(timeRule.DaysOfWeek, weekday) {
-			continue
-		}
-
-		// Parse start and end times
-		startTime, err := parseTimeOfDay(timeRule.StartTime)
-		if err != nil {
-			continue
-		}
-
-		endTime, err := parseTimeOfDay(timeRule.EndTime)
-		if err != nil {
-			continue
-		}
-
-		// Get current time of day
-		currentTime := now.Hour()*60 + now.Minute()
-
-		// Check if within time window
-		if currentTime >= startTime && currentTime < endTime {
-			return true
-		}
-	}
-
-	return false
 }
 
 // Helper functions
