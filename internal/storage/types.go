@@ -169,3 +169,18 @@ type AdminUser struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	LastLogin    *time.Time `json:"last_login,omitempty"`
 }
+
+// DHCPLease represents a DHCP IP address lease.
+type DHCPLease struct {
+	MAC       string    `json:"mac"`        // Client MAC address (key)
+	IP        string    `json:"ip"`         // Assigned IP address
+	Hostname  string    `json:"hostname"`   // Client hostname
+	ExpiresAt time.Time `json:"expires_at"` // Lease expiration time
+	CreatedAt time.Time `json:"created_at"` // When lease was created
+	UpdatedAt time.Time `json:"updated_at"` // Last update time
+}
+
+// IsExpired checks if the lease has expired
+func (l *DHCPLease) IsExpired() bool {
+	return time.Now().After(l.ExpiresAt)
+}

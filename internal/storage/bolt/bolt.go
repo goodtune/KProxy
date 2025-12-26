@@ -32,6 +32,7 @@ const (
 	bucketIndexAction = "action"
 	bucketIndexDomain = "domain"
 	bucketAdminUsers  = "admin_users"
+	bucketDHCPLeases  = "dhcp_leases"
 )
 
 // Store implements the storage.Store interface using bbolt.
@@ -82,6 +83,7 @@ func (s *Store) ensureBuckets() error {
 			[]byte(bucketLogsDNS),
 			[]byte(bucketIndexes),
 			[]byte(bucketAdminUsers),
+			[]byte(bucketDHCPLeases),
 		}
 
 		for _, name := range buckets {
@@ -136,6 +138,9 @@ func (s *Store) Logs() storage.LogStore { return &logStore{db: s.db} }
 
 // AdminUsers returns the admin user store.
 func (s *Store) AdminUsers() storage.AdminUserStore { return &adminUserStore{db: s.db} }
+
+// DHCPLeases returns the DHCP lease store.
+func (s *Store) DHCPLeases() storage.DHCPLeaseStore { return &dhcpLeaseStore{db: s.db} }
 
 func marshal(value any) ([]byte, error) {
 	data, err := json.Marshal(value)

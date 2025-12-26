@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	DNS      DNSConfig      `mapstructure:"dns"`
+	DHCP     DHCPConfig     `mapstructure:"dhcp"`
 	TLS      TLSConfig      `mapstructure:"tls"`
 	Storage  StorageConfig  `mapstructure:"storage"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
@@ -44,6 +45,24 @@ type DNSConfig struct {
 	BlockTTL        uint32   `mapstructure:"block_ttl"`
 	UpstreamTimeout string   `mapstructure:"upstream_timeout"`
 	GlobalBypass    []string `mapstructure:"global_bypass"`
+}
+
+// DHCPConfig defines DHCP server settings
+type DHCPConfig struct {
+	Enabled        bool     `mapstructure:"enabled"`
+	Port           int      `mapstructure:"port"`
+	BindAddress    string   `mapstructure:"bind_address"`
+	ServerIP       string   `mapstructure:"server_ip"`        // DHCP server identifier
+	SubnetMask     string   `mapstructure:"subnet_mask"`      // Network mask
+	Gateway        string   `mapstructure:"gateway"`          // Default gateway
+	DNSServers     []string `mapstructure:"dns_servers"`      // DNS servers to advertise
+	LeaseTime      string   `mapstructure:"lease_time"`       // Default lease duration
+	RangeStart     string   `mapstructure:"range_start"`      // Start of IP pool
+	RangeEnd       string   `mapstructure:"range_end"`        // End of IP pool
+	BootFileName   string   `mapstructure:"boot_filename"`    // TFTP boot filename (e.g., "pxelinux.0")
+	BootServerName string   `mapstructure:"boot_server_name"` // Boot server hostname
+	TFTPIP         string   `mapstructure:"tftp_ip"`          // TFTP server IP
+	BootURI        string   `mapstructure:"boot_uri"`         // HTTP boot URI (UEFI HTTP boot)
 }
 
 // TLSConfig defines certificate authority settings
@@ -166,6 +185,13 @@ func setDefaults(v *viper.Viper) {
 		"time.*.com",
 		"time.*.gov",
 	})
+
+	// DHCP defaults
+	v.SetDefault("dhcp.enabled", false)
+	v.SetDefault("dhcp.port", 67)
+	v.SetDefault("dhcp.bind_address", "0.0.0.0")
+	v.SetDefault("dhcp.lease_time", "24h")
+	v.SetDefault("dhcp.dns_servers", []string{})
 
 	// TLS defaults
 	v.SetDefault("tls.ca_cert", "/etc/kproxy/ca/root-ca.crt")
