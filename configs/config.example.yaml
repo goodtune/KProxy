@@ -50,15 +50,15 @@ dhcp:
   port: 67
   bind_address: "0.0.0.0"
 
-  # DHCP server settings
-  server_ip: "192.168.1.1"       # DHCP server identifier (must match kproxy host IP)
-  subnet_mask: "255.255.255.0"   # Network subnet mask
-  gateway: "192.168.1.1"         # Default gateway for clients
+  # DHCP server settings (auto-detected if not specified)
+  # server_ip: "192.168.1.1"       # DHCP server identifier (auto-detected from network interface)
+  # subnet_mask: "255.255.255.0"   # Network subnet mask (auto-detected from network interface)
+  # gateway: "192.168.1.1"         # Default gateway for clients (auto-detected, uses server IP)
 
   # DNS servers to advertise to clients (empty = use server_ip as DNS)
   dns_servers: []
 
-  # IP address pool for dynamic allocation
+  # IP address pool for dynamic allocation (REQUIRED - must be configured manually)
   range_start: "192.168.1.100"
   range_end: "192.168.1.200"
 
