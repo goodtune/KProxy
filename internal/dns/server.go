@@ -50,9 +50,13 @@ type Config struct {
 
 // NewServer creates a new DNS server
 func NewServer(config Config, policy *policy.Engine, logStore storage.LogStore, logger zerolog.Logger) (*Server, error) {
-	proxyIP := net.ParseIP(config.ProxyIP)
-	if proxyIP == nil {
-		return nil, fmt.Errorf("invalid proxy IP: %s", config.ProxyIP)
+	// ProxyIP is optional - if not set, we'll auto-detect from incoming connections
+	var proxyIP net.IP
+	if config.ProxyIP != "" {
+		proxyIP = net.ParseIP(config.ProxyIP)
+		if proxyIP == nil {
+			return nil, fmt.Errorf("invalid proxy IP: %s", config.ProxyIP)
+		}
 	}
 
 	s := &Server{
@@ -244,6 +248,11 @@ func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 func (s *Server) createInterceptResponse(q *dns.Question, domain string) dns.RR {
 	switch q.Qtype {
 	case dns.TypeA:
+		s.logger.Debug().
+			Str("domain", domain).
+			Str("proxy_ip", s.proxyIP.String()).
+			Msg("Creating DNS intercept response")
+
 		return &dns.A{
 			Hdr: dns.RR_Header{
 				Name:   q.Name,

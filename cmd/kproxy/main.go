@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -95,6 +96,7 @@ func main() {
 		cfg.DNS.GlobalBypass,
 		defaultAction,
 		cfg.Policy.UseMACAddress,
+		logger,
 	)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize Policy Engine")
@@ -131,9 +133,22 @@ func main() {
 	logger.Info().Msg("Reset Scheduler initialized")
 
 	// Initialize DNS Server
+	// ProxyIP - if not configured, auto-detect the server's primary IP
+	proxyIP := cfg.Server.ProxyIP
+	if proxyIP == "" {
+		detectedIP, err := detectServerIP()
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to auto-detect server IP. Please set server.proxy_ip in config")
+		}
+		proxyIP = detectedIP
+		logger.Info().Str("proxy_ip", proxyIP).Msg("Auto-detected server IP for DNS intercept responses")
+	} else {
+		logger.Info().Str("proxy_ip", proxyIP).Msg("Using configured proxy IP for DNS intercept responses")
+	}
+
 	dnsConfig := dns.Config{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.DNSPort),
-		ProxyIP:      cfg.Server.BindAddress,
+		ProxyIP:      proxyIP,
 		UpstreamDNS:  cfg.DNS.UpstreamServers,
 		InterceptTTL: cfg.DNS.InterceptTTL,
 		BypassTTLCap: cfg.DNS.BypassTTLCap,
@@ -316,4 +331,30 @@ func parseDuration(s string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// detectServerIP attempts to detect the server's primary non-loopback IP address
+func detectServerIP() (string, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", fmt.Errorf("failed to get interface addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		// Check if it's an IP address (not a network)
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			// Skip loopback addresses
+			if ipNet.IP.IsLoopback() {
+				continue
+			}
+			// Skip IPv6 for now (prefer IPv4)
+			if ipNet.IP.To4() == nil {
+				continue
+			}
+			// Return the first valid IPv4 non-loopback address
+			return ipNet.IP.String(), nil
+		}
+	}
+
+	return "", fmt.Errorf("no suitable IP address found")
 }

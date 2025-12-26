@@ -33,6 +33,7 @@ type ServerConfig struct {
 	AdminDomain  string `mapstructure:"admin_domain"`
 	MetricsPort  int    `mapstructure:"metrics_port"`
 	BindAddress  string `mapstructure:"bind_address"`
+	ProxyIP      string `mapstructure:"proxy_ip"` // IP address returned in DNS intercept responses
 }
 
 // DNSConfig defines DNS server settings

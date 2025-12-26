@@ -75,6 +75,7 @@ func TestLogStoreCleanup(t *testing.T) {
 		Host:      "example.com",
 		Path:      "/",
 		Method:    "GET",
+		Action:    storage.ActionAllow,
 	}); err != nil {
 		t.Fatalf("add request log: %v", err)
 	}

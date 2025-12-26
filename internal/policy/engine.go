@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/storage"
+	"github.com/rs/zerolog"
 )
 
 // UsageTracker interface for usage tracking
@@ -44,11 +45,12 @@ type Engine struct {
 	defaultAction Action
 	useMACAddress bool
 	usageTracker  UsageTracker
+	logger        zerolog.Logger
 	mu            sync.RWMutex
 }
 
 // NewEngine creates a new policy engine
-func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool) (*Engine, error) {
+func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool, logger zerolog.Logger) (*Engine, error) {
 	e := &Engine{
 		deviceStore:   store.Devices(),
 		profileStore:  store.Profiles(),
@@ -62,6 +64,7 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 		bypassRules:   make([]*BypassRule, 0),
 		globalBypass:  globalBypass,
 		useMACAddress: useMACAddress,
+		logger:        logger.With().Str("component", "policy").Logger(),
 	}
 
 	// Set default action
@@ -135,10 +138,22 @@ func (e *Engine) loadDevices() error {
 				devicesByMAC[strings.ToLower(identifier)] = &device
 			}
 		}
+
+		e.logger.Info().
+			Str("device_id", device.ID).
+			Str("device_name", device.Name).
+			Strs("identifiers", device.Identifiers).
+			Str("profile_id", device.ProfileID).
+			Msg("Loaded device")
 	}
 
 	e.devices = devices
 	e.devicesByMAC = devicesByMAC
+
+	e.logger.Info().
+		Int("total_devices", len(devices)).
+		Int("devices_with_mac", len(devicesByMAC)).
+		Msg("Device loading complete")
 
 	return nil
 }
@@ -194,15 +209,24 @@ func (e *Engine) loadProfileRules(profile *Profile) error {
 
 	rules := make([]Rule, 0, len(storedRules))
 	for _, storedRule := range storedRules {
-		rules = append(rules, Rule{
+		rule := Rule{
 			ID:          storedRule.ID,
 			Domain:      storedRule.Domain,
 			Paths:       storedRule.Paths,
-			Action:      Action(storedRule.Action),
+			Action:      Action(storedRule.Action), // Convert from storage.Action to policy.Action
 			Priority:    storedRule.Priority,
 			Category:    storedRule.Category,
 			InjectTimer: storedRule.InjectTimer,
-		})
+		}
+		rules = append(rules, rule)
+
+		e.logger.Info().
+			Str("profile_id", profile.ID).
+			Str("rule_id", rule.ID).
+			Str("domain", rule.Domain).
+			Str("action", string(rule.Action)).
+			Int("priority", rule.Priority).
+			Msg("Loaded rule")
 	}
 
 	sort.Slice(rules, func(i, j int) bool {
@@ -210,6 +234,14 @@ func (e *Engine) loadProfileRules(profile *Profile) error {
 	})
 
 	profile.Rules = rules
+
+	e.logger.Info().
+		Str("profile_id", profile.ID).
+		Str("profile_name", profile.Name).
+		Int("total_rules", len(rules)).
+		Bool("default_allow", profile.DefaultAllow).
+		Msg("Profile rules loaded")
+
 	return nil
 }
 
@@ -278,9 +310,21 @@ func (e *Engine) loadBypassRules() error {
 			DeviceIDs: storedRule.DeviceIDs,
 		}
 		bypassRules = append(bypassRules, &rule)
+
+		e.logger.Info().
+			Str("rule_id", rule.ID).
+			Str("domain", rule.Domain).
+			Strs("device_ids", rule.DeviceIDs).
+			Str("reason", rule.Reason).
+			Msg("Loaded bypass rule")
 	}
 
 	e.bypassRules = bypassRules
+
+	e.logger.Info().
+		Int("total_bypass_rules", len(bypassRules)).
+		Msg("Bypass rule loading complete")
+
 	return nil
 }
 
@@ -294,9 +338,27 @@ func (e *Engine) IdentifyDevice(clientIP net.IP, clientMAC net.HardwareAddr) *De
 
 // identifyDevice is the internal implementation (requires lock)
 func (e *Engine) identifyDevice(clientIP net.IP, clientMAC net.HardwareAddr) *Device {
+	clientIPStr := clientIP.String()
+
+	e.logger.Debug().
+		Str("client_ip", clientIPStr).
+		Str("client_mac", func() string {
+			if clientMAC != nil {
+				return clientMAC.String()
+			}
+			return "nil"
+		}()).
+		Int("total_devices", len(e.devices)).
+		Msg("Attempting to identify device")
+
 	// Try MAC address first (most reliable)
 	if clientMAC != nil && e.useMACAddress {
 		if device := e.devicesByMAC[strings.ToLower(clientMAC.String())]; device != nil {
+			e.logger.Debug().
+				Str("device_id", device.ID).
+				Str("device_name", device.Name).
+				Str("method", "mac").
+				Msg("Device identified")
 			return device
 		}
 	}
@@ -304,19 +366,43 @@ func (e *Engine) identifyDevice(clientIP net.IP, clientMAC net.HardwareAddr) *De
 	// Fall back to IP address
 	for _, device := range e.devices {
 		for _, identifier := range device.Identifiers {
+			e.logger.Debug().
+				Str("client_ip", clientIPStr).
+				Str("identifier", identifier).
+				Str("device_id", device.ID).
+				Msg("Comparing IP identifier")
+
 			// Check if it's a CIDR range
 			if strings.Contains(identifier, "/") {
 				if ipRange, err := netip.ParsePrefix(identifier); err == nil {
-					clientAddr, err := netip.ParseAddr(clientIP.String())
+					clientAddr, err := netip.ParseAddr(clientIPStr)
 					if err == nil && ipRange.Contains(clientAddr) {
+						e.logger.Info().
+							Str("device_id", device.ID).
+							Str("device_name", device.Name).
+							Str("client_ip", clientIPStr).
+							Str("matched_cidr", identifier).
+							Str("method", "cidr").
+							Msg("Device identified")
 						return device
 					}
 				}
-			} else if identifier == clientIP.String() {
+			} else if identifier == clientIPStr {
+				e.logger.Info().
+					Str("device_id", device.ID).
+					Str("device_name", device.Name).
+					Str("client_ip", clientIPStr).
+					Str("matched_ip", identifier).
+					Str("method", "ip").
+					Msg("Device identified")
 				return device
 			}
 		}
 	}
+
+	e.logger.Info().
+		Str("client_ip", clientIPStr).
+		Msg("Device not identified - no match found")
 
 	return nil
 }
@@ -333,18 +419,23 @@ func (e *Engine) GetDNSAction(clientIP net.IP, domain string) DNSAction {
 		return DNSActionBypass
 	}
 
-	// 2. Check device-specific bypass rules
-	if device != nil {
-		for _, rule := range e.bypassRules {
-			if !rule.Enabled {
+	// 2. Check bypass rules
+	for _, rule := range e.bypassRules {
+		if !rule.Enabled {
+			continue
+		}
+
+		// If rule has specific device IDs, only apply to those devices
+		if len(rule.DeviceIDs) > 0 {
+			// Skip if no device identified or device doesn't match
+			if device == nil || !contains(rule.DeviceIDs, device.ID) {
 				continue
 			}
-			if len(rule.DeviceIDs) > 0 && !contains(rule.DeviceIDs, device.ID) {
-				continue
-			}
-			if e.matchDomain(domain, rule.Domain) {
-				return DNSActionBypass
-			}
+		}
+		// If device_ids is empty, rule applies to all requests
+
+		if e.matchDomain(domain, rule.Domain) {
+			return DNSActionBypass
 		}
 	}
 

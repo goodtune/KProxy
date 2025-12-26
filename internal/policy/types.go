@@ -1,7 +1,10 @@
 package policy
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -13,6 +16,31 @@ const (
 	ActionBlock  Action = "BLOCK"
 	ActionBypass Action = "BYPASS"
 )
+
+// UnmarshalJSON implements json.Unmarshaler to normalize action to uppercase.
+func (a *Action) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	// Normalize to uppercase
+	normalized := Action(strings.ToUpper(s))
+
+	// Validate against known actions
+	switch normalized {
+	case ActionAllow, ActionBlock, ActionBypass:
+		*a = normalized
+		return nil
+	default:
+		return fmt.Errorf("invalid action: %s (must be ALLOW, BLOCK, or BYPASS)", s)
+	}
+}
+
+// MarshalJSON implements json.Marshaler to ensure uppercase output.
+func (a Action) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(a))
+}
 
 // DNSAction represents the DNS resolution action
 type DNSAction int

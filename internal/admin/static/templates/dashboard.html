@@ -25,6 +25,9 @@
             <a href="/admin/sessions" class="block px-4 py-2 rounded hover:bg-gray-700">
                 Sessions
             </a>
+            <a href="/admin/settings" class="block px-4 py-2 rounded hover:bg-gray-700">
+                Settings
+            </a>
         </nav>
 
         <div class="p-4 border-t border-gray-700">
@@ -43,22 +46,35 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="text-gray-500 text-sm font-medium mb-2">Total Devices</div>
-                    <div class="text-3xl font-bold text-gray-900">-</div>
+                    <div id="totalDevices" class="text-3xl font-bold text-gray-900">-</div>
                 </div>
 
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="text-gray-500 text-sm font-medium mb-2">Active Profiles</div>
-                    <div class="text-3xl font-bold text-gray-900">-</div>
+                    <div id="totalProfiles" class="text-3xl font-bold text-gray-900">-</div>
                 </div>
 
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="text-gray-500 text-sm font-medium mb-2">Total Rules</div>
-                    <div class="text-3xl font-bold text-gray-900">-</div>
+                    <div id="totalRules" class="text-3xl font-bold text-gray-900">-</div>
                 </div>
 
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="text-gray-500 text-sm font-medium mb-2">Requests Today</div>
-                    <div class="text-3xl font-bold text-gray-900">-</div>
+                    <div id="requestsToday" class="text-3xl font-bold text-gray-900">-</div>
+                </div>
+            </div>
+
+            <!-- Additional Stats Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="text-gray-500 text-sm font-medium mb-2">Active Sessions</div>
+                    <div id="activeSessions" class="text-3xl font-bold text-blue-600">-</div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="text-gray-500 text-sm font-medium mb-2">Blocked Today</div>
+                    <div id="blockedToday" class="text-3xl font-bold text-red-600">-</div>
                 </div>
             </div>
 
@@ -77,11 +93,14 @@
 
             <!-- Recent Activity -->
             <div class="mt-8 bg-white rounded-lg shadow">
-                <div class="p-6 border-b border-gray-200">
+                <div class="p-6 border-b border-gray-200 flex justify-between items-center">
                     <h3 class="text-lg font-semibold text-gray-900">Recent Blocks</h3>
+                    <button id="refreshDashboard" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                        Refresh
+                    </button>
                 </div>
-                <div class="p-6">
-                    <p class="text-gray-500 text-center py-8">No recent blocks to display</p>
+                <div id="recentBlocksContainer" class="p-6">
+                    <p class="text-gray-500 text-center py-8">Loading...</p>
                 </div>
             </div>
         </div>
@@ -99,50 +118,165 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
     }
 });
 
-// Placeholder charts (will be populated with real data in Phase 5.8)
-const requestCtx = document.getElementById('requestChart').getContext('2d');
-new Chart(requestCtx, {
-    type: 'line',
-    data: {
-        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
-        datasets: [{
-            label: 'Requests',
-            data: [0, 0, 0, 0, 0, 0],
-            borderColor: 'rgb(59, 130, 246)',
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: true
-            }
-        }
-    }
-});
+// Chart instances
+let requestChart = null;
+let blockedChart = null;
 
-const blockedCtx = document.getElementById('blockedChart').getContext('2d');
-new Chart(blockedCtx, {
-    type: 'bar',
-    data: {
-        labels: [],
-        datasets: [{
-            label: 'Blocks',
-            data: [],
-            backgroundColor: 'rgb(239, 68, 68)'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: true
-            }
+// Load dashboard statistics
+async function loadDashboardStats() {
+    try {
+        const response = await fetch('/api/stats/dashboard');
+        if (!response.ok) {
+            throw new Error('Failed to fetch dashboard stats');
         }
+        const stats = await response.json();
+
+        // Update stat cards
+        document.getElementById('totalDevices').textContent = stats.total_devices || 0;
+        document.getElementById('totalProfiles').textContent = stats.total_profiles || 0;
+        document.getElementById('totalRules').textContent = stats.total_rules || 0;
+        document.getElementById('requestsToday').textContent = stats.requests_today || 0;
+        document.getElementById('activeSessions').textContent = stats.active_sessions || 0;
+        document.getElementById('blockedToday').textContent = stats.blocked_today || 0;
+
+        // Update request timeline chart
+        if (stats.request_timeline && stats.request_timeline.length > 0) {
+            const labels = stats.request_timeline.map(point => point.time);
+            const data = stats.request_timeline.map(point => point.count);
+
+            const requestCtx = document.getElementById('requestChart').getContext('2d');
+            if (requestChart) {
+                requestChart.destroy();
+            }
+            requestChart = new Chart(requestCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Requests',
+                        data: data,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update blocked domains chart
+        if (stats.top_blocked_domains && stats.top_blocked_domains.length > 0) {
+            const labels = stats.top_blocked_domains.map(item => item.domain);
+            const data = stats.top_blocked_domains.map(item => item.count);
+
+            const blockedCtx = document.getElementById('blockedChart').getContext('2d');
+            if (blockedChart) {
+                blockedChart.destroy();
+            }
+            blockedChart = new Chart(blockedCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Blocks',
+                        data: data,
+                        backgroundColor: 'rgb(239, 68, 68)',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update recent blocks
+        const container = document.getElementById('recentBlocksContainer');
+        if (stats.recent_blocks && stats.recent_blocks.length > 0) {
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Device</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${stats.recent_blocks.map(block => `
+                                <tr>
+                                    <td class="px-4 py-2 text-sm text-gray-600">
+                                        ${new Date(block.timestamp).toLocaleTimeString()}
+                                    </td>
+                                    <td class="px-4 py-2 text-sm">${escapeHtml(block.device)}</td>
+                                    <td class="px-4 py-2 text-sm font-mono text-blue-600">${escapeHtml(block.domain)}</td>
+                                    <td class="px-4 py-2 text-sm">
+                                        <span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">${escapeHtml(block.reason)}</span>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            container.innerHTML = '<p class="text-gray-500 text-center py-8">No recent blocks to display</p>';
+        }
+
+    } catch (error) {
+        console.error('Failed to load dashboard stats:', error);
+        document.getElementById('recentBlocksContainer').innerHTML =
+            '<p class="text-red-500 text-center py-8">Failed to load statistics</p>';
     }
-});
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Refresh button
+document.getElementById('refreshDashboard').addEventListener('click', loadDashboardStats);
+
+// Auto-refresh every 30 seconds
+let autoRefreshInterval = setInterval(loadDashboardStats, 30000);
+
+// Initial load
+loadDashboardStats();
 </script>
 {{end}}
