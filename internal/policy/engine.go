@@ -49,11 +49,10 @@ type Engine struct {
 
 	// OPA engine for policy evaluation
 	opaEngine *opa.Engine
-	policyDir string
 }
 
 // NewEngine creates a new policy engine
-func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool, policyDir string, logger zerolog.Logger) (*Engine, error) {
+func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool, opaConfig opa.Config, logger zerolog.Logger) (*Engine, error) {
 	e := &Engine{
 		deviceStore:   store.Devices(),
 		profileStore:  store.Profiles(),
@@ -67,7 +66,6 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 		bypassRules:   make([]*BypassRule, 0),
 		globalBypass:  globalBypass,
 		useMACAddress: useMACAddress,
-		policyDir:     policyDir,
 		logger:        logger.With().Str("component", "policy").Logger(),
 	}
 
@@ -82,7 +80,7 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 	}
 
 	// Initialize OPA engine
-	opaEngine, err := opa.NewEngine(policyDir, logger)
+	opaEngine, err := opa.NewEngine(opaConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize OPA engine: %w", err)
 	}

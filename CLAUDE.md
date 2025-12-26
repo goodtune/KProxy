@@ -275,13 +275,39 @@ opa eval -d policies/ -i input.json "data.kproxy.dns.action"
 
 ### Configuration
 
-In `config.yaml`:
+KProxy supports loading policies from either **local filesystem** or **remote HTTP/HTTPS URLs**.
+
+**Filesystem configuration** (default):
 ```yaml
 policy:
-  opa_policy_dir: /etc/kproxy/policies  # Path to Rego policy files
-  default_action: block                  # Fallback action
-  use_mac_address: true                  # Prefer MAC for device ID
+  opa_policy_source: filesystem          # "filesystem" or "remote"
+  opa_policy_dir: /etc/kproxy/policies   # Path to Rego policy files
+  default_action: block                   # Fallback action
+  use_mac_address: true                   # Prefer MAC for device ID
 ```
+
+**Remote configuration** (centralized policy management):
+```yaml
+policy:
+  opa_policy_source: remote              # "filesystem" or "remote"
+  opa_policy_urls:                        # List of policy URLs
+    - https://policy-server.example.com/policies/helpers.rego
+    - https://policy-server.example.com/policies/device.rego
+    - https://policy-server.example.com/policies/dns.rego
+    - https://policy-server.example.com/policies/time.rego
+    - https://policy-server.example.com/policies/usage.rego
+    - https://policy-server.example.com/policies/proxy.rego
+  opa_http_timeout: 30s                   # HTTP request timeout
+  opa_http_retries: 3                     # Retry attempts on failure
+  default_action: block
+  use_mac_address: true
+```
+
+**Benefits of remote policies:**
+- Centralized policy management across multiple KProxy instances
+- Dynamic policy updates without filesystem access
+- Version control and CI/CD integration
+- Policies served from secure HTTPS endpoints
 
 ## Development Guidelines
 
@@ -313,12 +339,20 @@ policy:
 
 ## Common Gotchas
 
-1. **Policy Engine Reload**: After modifying database configuration, must call `policyEngine.Reload()` or restart service
-2. **OPA Policy Changes**: Policy logic is now in Rego files. Modifying Go code in `engine.go` won't change policy behavior. Edit `.rego` files in the policies directory instead.
+1. **Policy Engine Reload**: After modifying database configuration, must call `policyEngine.Reload()` or restart service. For remote policies, reload will re-fetch from URLs.
+2. **OPA Policy Changes**: Policy logic is now in Rego files. Modifying Go code in `engine.go` won't change policy behavior. Edit `.rego` files in the policies directory or update remote URLs instead.
 3. **OPA Compilation Errors**: Invalid Rego syntax will prevent KProxy from starting. Test policies with `opa test` before deploying.
-4. **Policy Directory Location**: Policies must be in the directory specified by `policy.opa_policy_dir` (default: `/etc/kproxy/policies`). Development can use `./policies` with config override.
-5. **CGO Requirement**: Building requires `CGO_ENABLED=1` for BoltDB (and previously SQLite)
-6. **Port Permissions**: DNS (53), HTTP (80), HTTPS (443) require root/CAP_NET_BIND_SERVICE
-7. **CA Certificate Trust**: Clients must trust root CA for HTTPS interception to work
-8. **Session Timeout**: Usage tracking sessions expire after inactivity_timeout (default 2 minutes)
-9. **Global Bypass**: Critical domains (OCSP, CRL) must be in global_bypass to prevent certificate validation failures
+4. **Policy Source Configuration**:
+   - **Filesystem mode**: Policies must be in directory specified by `policy.opa_policy_dir` (default: `/etc/kproxy/policies`). Development can use `./policies` with config override.
+   - **Remote mode**: All policy URLs must be accessible at startup. Network failures will prevent KProxy from starting unless all retries succeed. Use HTTPS for production.
+5. **Remote Policy Security**: When using remote policies:
+   - Always use HTTPS in production to prevent MITM attacks
+   - Implement proper authentication/authorization on policy server
+   - Consider caching policies locally as backup
+   - Monitor policy fetch failures in logs
+6. **HTTP Retry Logic**: Remote policy fetches use exponential backoff (2s, 4s, 8s, 16s). Default 3 retries. Configure with `policy.opa_http_retries`.
+7. **CGO Requirement**: Building requires `CGO_ENABLED=1` for BoltDB (and previously SQLite)
+8. **Port Permissions**: DNS (53), HTTP (80), HTTPS (443) require root/CAP_NET_BIND_SERVICE
+9. **CA Certificate Trust**: Clients must trust root CA for HTTPS interception to work
+10. **Session Timeout**: Usage tracking sessions expire after inactivity_timeout (default 2 minutes)
+11. **Global Bypass**: Critical domains (OCSP, CRL) must be in global_bypass to prevent certificate validation failures
