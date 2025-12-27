@@ -21,6 +21,7 @@ type Store interface {
 	Usage() UsageStore
 	Logs() LogStore
 	AdminUsers() AdminUserStore
+	DHCPLeases() DHCPLeaseStore
 }
 
 // DeviceStore manages device persistence.
@@ -125,4 +126,15 @@ type AdminUserStore interface {
 	Upsert(ctx context.Context, user AdminUser) error
 	Delete(ctx context.Context, username string) error
 	UpdateLastLogin(ctx context.Context, username string, loginTime time.Time) error
+}
+
+// DHCPLeaseStore manages DHCP IP address leases.
+type DHCPLeaseStore interface {
+	Get(ctx context.Context, mac string) (*DHCPLease, error)
+	GetByMAC(ctx context.Context, mac string) (*DHCPLease, error)
+	GetByIP(ctx context.Context, ip string) (*DHCPLease, error)
+	List(ctx context.Context) ([]DHCPLease, error)
+	Create(ctx context.Context, lease *DHCPLease) error
+	Delete(ctx context.Context, mac string) error
+	DeleteExpired(ctx context.Context) (int, error)
 }
