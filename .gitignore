@@ -48,3 +48,6 @@ Thumbs.db
 
 # Config files with sensitive data
 config.local.yaml
+
+# React UI build artifacts (copied during build)
+web/admin-ui/

@@ -208,7 +208,7 @@ func main() {
 		Msg("Metrics Server started")
 
 	// Initialize Admin Server (if enabled)
-	var adminServer *admin.Server
+	var adminServer *admin.GorfServer
 	if cfg.Admin.Enabled {
 		// Ensure initial admin user exists
 		if err := admin.EnsureInitialAdminUser(
@@ -231,7 +231,7 @@ func main() {
 			RateLimitWindow: parseDuration(cfg.Admin.RateLimitWindow, time.Minute),
 		}
 
-		adminServer = admin.NewServer(adminConfig, store, policyEngine, certificateAuthority, logger)
+		adminServer = admin.NewGorfServer(adminConfig, store, policyEngine, usageTracker, certificateAuthority, logger)
 
 		if err := adminServer.Start(); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to start Admin Server")
@@ -239,7 +239,7 @@ func main() {
 
 		logger.Info().
 			Str("addr", adminConfig.ListenAddr).
-			Msg("Admin Server started")
+			Msg("Admin Server started (gorf/Gin)")
 	}
 
 	// Log startup complete
