@@ -85,7 +85,7 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 		}
 
 		// Rules management (nested under profiles)
-		profileRules := api.Group("/profiles/:profileID")
+		profileRules := api.Group("/profiles/:id")
 		{
 			// Regular rules
 			profileRules.GET("/rules", rulesViews.ListRules)

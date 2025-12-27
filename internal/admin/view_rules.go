@@ -43,7 +43,7 @@ func NewRulesViews(
 
 // ListRules returns all rules for a profile.
 func (v *RulesViews) ListRules(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 
 	rules, err := v.ruleStore.ListByProfile(ctx.Request.Context(), profileID)
 	if err != nil {
@@ -63,7 +63,7 @@ func (v *RulesViews) ListRules(ctx *gin.Context) {
 
 // GetRule returns a single rule by ID.
 func (v *RulesViews) GetRule(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 	ruleID := ctx.Param("ruleID")
 
 	rule, err := v.ruleStore.Get(ctx.Request.Context(), profileID, ruleID)
@@ -88,7 +88,7 @@ func (v *RulesViews) GetRule(ctx *gin.Context) {
 
 // CreateRule creates a new rule.
 func (v *RulesViews) CreateRule(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 
 	var rule storage.Rule
 	if err := ctx.ShouldBindJSON(&rule); err != nil {
@@ -135,7 +135,7 @@ func (v *RulesViews) CreateRule(ctx *gin.Context) {
 
 // UpdateRule updates an existing rule.
 func (v *RulesViews) UpdateRule(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 	ruleID := ctx.Param("ruleID")
 
 	// Get existing rule
@@ -198,7 +198,7 @@ func (v *RulesViews) UpdateRule(ctx *gin.Context) {
 
 // DeleteRule deletes a rule.
 func (v *RulesViews) DeleteRule(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 	ruleID := ctx.Param("ruleID")
 
 	if err := v.ruleStore.Delete(ctx.Request.Context(), profileID, ruleID); err != nil {
@@ -232,7 +232,7 @@ func (v *RulesViews) DeleteRule(ctx *gin.Context) {
 
 // ListTimeRules returns all time rules for a profile.
 func (v *RulesViews) ListTimeRules(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 
 	timeRules, err := v.timeRuleStore.ListByProfile(ctx.Request.Context(), profileID)
 	if err != nil {
@@ -252,7 +252,7 @@ func (v *RulesViews) ListTimeRules(ctx *gin.Context) {
 
 // CreateTimeRule creates a new time rule.
 func (v *RulesViews) CreateTimeRule(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 
 	var timeRule storage.TimeRule
 	if err := ctx.ShouldBindJSON(&timeRule); err != nil {
@@ -287,7 +287,7 @@ func (v *RulesViews) CreateTimeRule(ctx *gin.Context) {
 
 // DeleteTimeRule deletes a time rule.
 func (v *RulesViews) DeleteTimeRule(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 	ruleID := ctx.Param("ruleID")
 
 	if err := v.timeRuleStore.Delete(ctx.Request.Context(), profileID, ruleID); err != nil {
@@ -320,7 +320,7 @@ func (v *RulesViews) DeleteTimeRule(ctx *gin.Context) {
 
 // ListUsageLimits returns all usage limits for a profile.
 func (v *RulesViews) ListUsageLimits(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 
 	limits, err := v.usageLimitStore.ListByProfile(ctx.Request.Context(), profileID)
 	if err != nil {
@@ -340,7 +340,7 @@ func (v *RulesViews) ListUsageLimits(ctx *gin.Context) {
 
 // CreateUsageLimit creates a new usage limit.
 func (v *RulesViews) CreateUsageLimit(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 
 	var limit storage.UsageLimit
 	if err := ctx.ShouldBindJSON(&limit); err != nil {
@@ -375,7 +375,7 @@ func (v *RulesViews) CreateUsageLimit(ctx *gin.Context) {
 
 // DeleteUsageLimit deletes a usage limit.
 func (v *RulesViews) DeleteUsageLimit(ctx *gin.Context) {
-	profileID := ctx.Param("profileID")
+	profileID := ctx.Param("id")
 	limitID := ctx.Param("limitID")
 
 	if err := v.usageLimitStore.Delete(ctx.Request.Context(), profileID, limitID); err != nil {
