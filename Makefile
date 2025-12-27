@@ -1,4 +1,4 @@
-.PHONY: all build test lint clean docker run generate-ca install tidy help
+.PHONY: all build test lint clean docker run generate-ca install tidy help build-ui clean-ui
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -X main.version=$(VERSION)
@@ -6,11 +6,26 @@ BINARY := kproxy
 
 all: build
 
-## build: Build the kproxy binary
-build: tidy
+## build: Build the kproxy binary with embedded React UI
+build: tidy build-ui
 	@echo "Building kproxy $(VERSION)..."
 	@CGO_ENABLED=1 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/kproxy
 	@echo "Built bin/$(BINARY)"
+
+## build-ui: Build the React admin UI
+build-ui:
+	@echo "Building React admin UI..."
+	@if [ -d "admin-ui" ]; then \
+		cd admin-ui && npm install --silent && npm run build; \
+		echo "React UI built successfully"; \
+		cd .. && echo "Copying build to web package..." && \
+		rm -rf web/admin-ui && \
+		mkdir -p web/admin-ui && \
+		cp -r admin-ui/build web/admin-ui/ && \
+		echo "UI build copied to web/admin-ui/build"; \
+	else \
+		echo "Warning: admin-ui directory not found, skipping UI build"; \
+	fi
 
 ## test: Run tests
 test: tidy
@@ -27,10 +42,18 @@ lint:
 	fi
 
 ## clean: Clean build artifacts
-clean:
+clean: clean-ui
 	@echo "Cleaning..."
 	@rm -rf bin/
 	@echo "Clean complete"
+
+## clean-ui: Clean React UI build artifacts
+clean-ui:
+	@echo "Cleaning React UI build..."
+	@if [ -d "admin-ui/build" ]; then rm -rf admin-ui/build; fi
+	@if [ -d "admin-ui/node_modules" ]; then rm -rf admin-ui/node_modules; fi
+	@if [ -d "web/admin-ui" ]; then rm -rf web/admin-ui; fi
+	@echo "React UI clean complete"
 
 ## docker: Build Docker image
 docker:
