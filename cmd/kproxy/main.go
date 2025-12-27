@@ -16,6 +16,7 @@ import (
 	"github.com/goodtune/kproxy/internal/dns"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
+	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/proxy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/storage/bolt"
@@ -91,18 +92,30 @@ func main() {
 		defaultAction = "block"
 	}
 
+	// Build OPA configuration
+	opaConfig := opa.Config{
+		Source:      cfg.Policy.OPAPolicySource,
+		PolicyDir:   cfg.Policy.OPAPolicyDir,
+		PolicyURLs:  cfg.Policy.OPAPolicyURLs,
+		HTTPTimeout: parseDuration(cfg.Policy.OPAHTTPTimeout, 30*time.Second),
+		HTTPRetries: cfg.Policy.OPAHTTPRetries,
+	}
+
 	policyEngine, err := policy.NewEngine(
 		store,
 		cfg.DNS.GlobalBypass,
 		defaultAction,
 		cfg.Policy.UseMACAddress,
+		opaConfig,
 		logger,
 	)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize Policy Engine")
 	}
 
-	logger.Info().Msg("Policy Engine initialized")
+	logger.Info().
+		Str("opa_source", opaConfig.Source).
+		Msg("Policy Engine initialized")
 
 	// Initialize Usage Tracker
 	usageTracker := usage.NewTracker(
