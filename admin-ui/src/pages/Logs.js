@@ -17,6 +17,7 @@ const Logs = () => {
 
   useEffect(() => {
     loadLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadLogs = async () => {
