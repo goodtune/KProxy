@@ -240,4 +240,26 @@ export const getStats = async () => {
   return response.data;
 };
 
+// Sessions endpoints
+export const getActiveSessions = async () => {
+  const response = await api.get('/sessions');
+  return response.data;
+};
+
+export const getSession = async (id) => {
+  const response = await api.get(`/sessions/${id}`);
+  return response.data;
+};
+
+export const terminateSession = async (id) => {
+  const response = await api.delete(`/sessions/${id}`);
+  return response.data;
+};
+
+export const getDailyUsage = async (date) => {
+  const endpoint = date === 'today' ? '/usage/today' : `/usage/${date}`;
+  const response = await api.get(endpoint);
+  return response.data;
+};
+
 export default api;

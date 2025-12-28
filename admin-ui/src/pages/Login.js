@@ -25,13 +25,13 @@ const Login = () => {
   };
 
   return (
-    <div className="login-container">
+    <div className="login-container" data-page="login">
       <div className="login-box">
         <h1>KProxy Admin</h1>
         <p className="login-subtitle">Parental Control Management</p>
 
-        <form onSubmit={handleSubmit} className="login-form">
-          {error && <div className="error-message">{error}</div>}
+        <form id="loginForm" onSubmit={handleSubmit} className="login-form">
+          {error && <div id="error-message" className="error-message">{error}</div>}
 
           <div className="form-group">
             <label htmlFor="username">Username</label>

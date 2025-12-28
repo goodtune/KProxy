@@ -33,7 +33,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" data-page="dashboard">
       <Sidebar />
       <div className="main-content">
         <div className="page-header">

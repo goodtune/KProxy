@@ -53,6 +53,10 @@ const Sidebar = () => {
           <span className="nav-icon">📄</span>
           Logs
         </Link>
+        <Link to="/sessions" className={`nav-item ${isActive('/sessions')}`}>
+          <span className="nav-icon">⏱️</span>
+          Sessions
+        </Link>
       </nav>
       <div className="sidebar-footer">
         <button onClick={handleLogout} className="logout-btn">

@@ -10,6 +10,7 @@ import TimeRules from './pages/TimeRules';
 import UsageLimits from './pages/UsageLimits';
 import BypassRules from './pages/BypassRules';
 import Logs from './pages/Logs';
+import Sessions from './pages/Sessions';
 import { isAuthenticated } from './services/api';
 
 // Protected Route component
@@ -19,7 +20,7 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   return (
-    <Router>
+    <Router basename="/admin">
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
@@ -83,6 +84,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Logs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sessions"
+          element={
+            <ProtectedRoute>
+              <Sessions />
             </ProtectedRoute>
           }
         />
