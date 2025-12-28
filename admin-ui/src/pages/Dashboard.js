@@ -35,9 +35,9 @@ const Dashboard = () => {
   return (
     <div className="app-container" data-page="dashboard">
       <Sidebar />
-      <div className="main-content">
+      <main className="main-content">
         <div className="page-header">
-          <h1>Dashboard</h1>
+          <h2>Dashboard</h2>
           <button onClick={loadStats} className="btn btn-secondary" disabled={loading}>
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -50,7 +50,7 @@ const Dashboard = () => {
             <div className="stat-icon">📱</div>
             <div className="stat-content">
               <div className="stat-value">{stats.devices || 0}</div>
-              <div className="stat-label">Devices</div>
+              <div className="stat-label">Total Devices</div>
             </div>
           </div>
 
@@ -58,7 +58,7 @@ const Dashboard = () => {
             <div className="stat-icon">👤</div>
             <div className="stat-content">
               <div className="stat-value">{stats.profiles || 0}</div>
-              <div className="stat-label">Profiles</div>
+              <div className="stat-label">Active Profiles</div>
             </div>
           </div>
 
@@ -99,7 +99,7 @@ const Dashboard = () => {
           <h2>Quick Stats</h2>
           <p>Welcome to KProxy Admin Dashboard. Use the navigation menu to manage devices, profiles, rules, and view logs.</p>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
