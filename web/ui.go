@@ -28,41 +28,58 @@ func ServeReactApp(c *gin.Context) {
 		return
 	}
 
+	// Root path or empty - serve index.html directly
+	if requestPath == "/" || requestPath == "" {
+		serveIndexHTML(c)
+		return
+	}
+
 	// Try to serve the requested file from the embedded filesystem
 	filePath := path.Join("admin-ui/build", strings.TrimPrefix(requestPath, "/"))
 
 	// Check if file exists
-	if _, err := fs.Stat(ReactBuildFS, filePath); err == nil {
-		// File exists, serve it
+	fileInfo, err := fs.Stat(ReactBuildFS, filePath)
+	if err == nil && !fileInfo.IsDir() {
+		// File exists and is not a directory, serve it
 		c.FileFromFS(filePath, http.FS(ReactBuildFS))
 		return
 	}
 
-	// File doesn't exist - serve index.html for SPA routing
+	// File doesn't exist or is a directory - serve index.html for SPA routing
 	// This allows React Router to handle the route on the client side
-	indexPath := "admin-ui/build/index.html"
-	c.FileFromFS(indexPath, http.FS(ReactBuildFS))
+	serveIndexHTML(c)
+}
+
+// serveIndexHTML serves the index.html file directly from the embedded filesystem
+func serveIndexHTML(c *gin.Context) {
+	data, err := fs.ReadFile(ReactBuildFS, "admin-ui/build/index.html")
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 }
 
 // SetupUIRoutes configures routes for serving the React UI.
 func SetupUIRoutes(r *gin.Engine) {
 	// Serve static assets (js, css, images, etc.)
-	buildFS, err := fs.Sub(ReactBuildFS, "admin-ui/build")
+	// React build puts assets in build/static/, so mount that subdirectory at /static
+	staticFS, err := fs.Sub(ReactBuildFS, "admin-ui/build/static")
 	if err == nil {
 		// Serve static files with proper caching headers
-		r.StaticFS("/static", http.FS(buildFS))
-
-		// Serve other build assets (manifest, favicon, etc.)
-		r.GET("/favicon.ico", func(c *gin.Context) {
-			c.FileFromFS("admin-ui/build/favicon.ico", http.FS(ReactBuildFS))
-		})
-		r.GET("/manifest.json", func(c *gin.Context) {
-			c.FileFromFS("admin-ui/build/manifest.json", http.FS(ReactBuildFS))
-		})
-		r.GET("/robots.txt", func(c *gin.Context) {
-			c.FileFromFS("admin-ui/build/robots.txt", http.FS(ReactBuildFS))
-		})
+		r.StaticFS("/static", http.FS(staticFS))
 	}
+
+	// Serve other build assets (manifest, favicon, etc.)
+	r.GET("/favicon.ico", func(c *gin.Context) {
+		c.FileFromFS("admin-ui/build/favicon.ico", http.FS(ReactBuildFS))
+	})
+	r.GET("/manifest.json", func(c *gin.Context) {
+		c.FileFromFS("admin-ui/build/manifest.json", http.FS(ReactBuildFS))
+	})
+	r.GET("/robots.txt", func(c *gin.Context) {
+		c.FileFromFS("admin-ui/build/robots.txt", http.FS(ReactBuildFS))
+	})
 
 	// Catch-all route for SPA - must be registered last
 	// Serves index.html for all non-API routes to support client-side routing

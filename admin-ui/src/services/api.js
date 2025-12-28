@@ -65,7 +65,7 @@ export const isAuthenticated = () => {
 // Device endpoints
 export const getDevices = async () => {
   const response = await api.get('/devices');
-  return response.data;
+  return response.data.devices || [];
 };
 
 export const getDevice = async (id) => {
@@ -91,7 +91,7 @@ export const deleteDevice = async (id) => {
 // Profile endpoints
 export const getProfiles = async () => {
   const response = await api.get('/profiles');
-  return response.data;
+  return response.data.profiles || [];
 };
 
 export const getProfile = async (id) => {
@@ -117,7 +117,7 @@ export const deleteProfile = async (id) => {
 // Rules endpoints
 export const getRules = async () => {
   const response = await api.get('/rules');
-  return response.data;
+  return response.data.rules || [];
 };
 
 export const getRule = async (id) => {
@@ -143,12 +143,12 @@ export const deleteRule = async (id) => {
 // Logs endpoints
 export const getRequestLogs = async (params) => {
   const response = await api.get('/logs/requests', { params });
-  return response.data;
+  return response.data.logs || [];
 };
 
 export const getDNSLogs = async (params) => {
   const response = await api.get('/logs/dns', { params });
-  return response.data;
+  return response.data.logs || [];
 };
 
 export const getUsageLogs = async (params) => {
