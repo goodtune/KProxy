@@ -1,0 +1,27 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "KProxy is a transparent HTTP/HTTPS interception proxy with embedded DNS server for home network parental controls.\nIt combines DNS-level routing decisions with proxy-level policy enforcement, dynamic TLS certificate generation, and usage tracking.",
+        "title": "KProxy Admin API",
+        "contact": {
+            "name": "KProxy Support",
+            "url": "https://github.com/goodtune/kproxy"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8443",
+    "basePath": "/api",
+    "paths": {},
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and the JWT token",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

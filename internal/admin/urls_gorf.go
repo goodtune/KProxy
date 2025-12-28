@@ -9,6 +9,10 @@ import (
 	"github.com/goodtune/kproxy/internal/usage"
 	"github.com/goodtune/kproxy/web"
 	"github.com/rs/zerolog"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "github.com/goodtune/kproxy/docs" // Import generated docs
 )
 
 // AdminDeps holds dependencies needed for admin routes.
@@ -48,6 +52,10 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 	r.GET("/health", func(ctx *gin.Context) {
 		ctx.JSON(200, gin.H{"status": "ok"})
 	})
+
+	// Swagger API documentation (public) - must be registered before other /api routes
+	r.GET("/api/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/api/", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Authentication endpoints (public)
 	auth := r.Group("/api/auth")
