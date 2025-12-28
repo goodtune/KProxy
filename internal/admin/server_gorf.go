@@ -60,8 +60,14 @@ func NewGorfServer(
 		AllowedOrigins: cfg.AllowedOrigins,
 	}
 
-	// Create Gin router directly (gorf Bootstrap not needed for simple case)
-	router := gin.Default()
+	// Set Gin to release mode (suppress debug output)
+	gin.SetMode(gin.ReleaseMode)
+
+	// Create Gin router without default middleware (we use custom JSON logging)
+	router := gin.New()
+
+	// Add recovery middleware (handles panics)
+	router.Use(gin.Recovery())
 
 	// Setup routes directly
 	SetupGorfRoutes(router, adminDeps)

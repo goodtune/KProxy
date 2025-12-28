@@ -214,12 +214,34 @@ func (s *Server) handleDiscover(req *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, error) {
 	var offerIP net.IP
 
 	if err == nil && lease != nil && !lease.IsExpired() {
-		// Reuse existing lease
-		offerIP = net.ParseIP(lease.IP)
-		s.logger.Debug().
-			Str("mac", mac).
-			Str("ip", lease.IP).
-			Msg("Reusing existing lease")
+		// Check if existing lease IP is still in the current pool
+		existingIP := net.ParseIP(lease.IP)
+		if s.isIPInPool(existingIP) {
+			// Reuse existing lease if IP is still in pool
+			offerIP = existingIP
+			s.logger.Debug().
+				Str("mac", mac).
+				Str("ip", lease.IP).
+				Msg("Reusing existing lease")
+		} else {
+			// Old lease is outside current pool, delete and allocate new IP
+			s.logger.Info().
+				Str("mac", mac).
+				Str("old_ip", lease.IP).
+				Msg("Existing lease outside pool range, allocating new IP")
+			if err := s.leaseStore.Delete(s.ctx, mac); err != nil {
+				s.logger.Warn().Err(err).Msg("Failed to delete old lease")
+			}
+			offerIP, err = s.allocateIP(mac)
+			if err != nil {
+				s.logger.Error().Err(err).Str("mac", mac).Msg("Failed to allocate IP")
+				return nil, err
+			}
+			s.logger.Debug().
+				Str("mac", mac).
+				Str("ip", offerIP.String()).
+				Msg("Allocated new IP")
+		}
 	} else {
 		// Allocate new IP
 		offerIP, err = s.allocateIP(mac)

@@ -46,7 +46,7 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 	logsViews := NewLogsViews(deps.Store.Logs(), deps.Logger)
 	sessionsViews := NewSessionsViews(deps.Store.Usage(), deps.Logger)
 	statsViews := NewStatsViews(deps.Store.Devices(), deps.Store.Profiles(), deps.Store.Rules(), deps.Store.Logs(), deps.Store.Usage(), deps.Logger)
-	systemViews := NewSystemViews(deps.PolicyEngine, deps.Logger)
+	systemViews := NewSystemViews(deps.Store, deps.PolicyEngine, deps.Logger)
 
 	// Health check (public)
 	r.GET("/health", func(ctx *gin.Context) {
@@ -111,11 +111,15 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			// Time rules
 			profileRules.GET("/time-rules", rulesViews.ListTimeRules)
 			profileRules.POST("/time-rules", rulesViews.CreateTimeRule)
+			profileRules.GET("/time-rules/:ruleID", rulesViews.GetTimeRule)
+			profileRules.PUT("/time-rules/:ruleID", rulesViews.UpdateTimeRule)
 			profileRules.DELETE("/time-rules/:ruleID", rulesViews.DeleteTimeRule)
 
 			// Usage limits
 			profileRules.GET("/usage-limits", rulesViews.ListUsageLimits)
 			profileRules.POST("/usage-limits", rulesViews.CreateUsageLimit)
+			profileRules.GET("/usage-limits/:limitID", rulesViews.GetUsageLimit)
+			profileRules.PUT("/usage-limits/:limitID", rulesViews.UpdateUsageLimit)
 			profileRules.DELETE("/usage-limits/:limitID", rulesViews.DeleteUsageLimit)
 		}
 
@@ -124,6 +128,8 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 		{
 			bypassRules.GET("", rulesViews.ListBypassRules)
 			bypassRules.POST("", rulesViews.CreateBypassRule)
+			bypassRules.GET("/:id", rulesViews.GetBypassRule)
+			bypassRules.PUT("/:id", rulesViews.UpdateBypassRule)
 			bypassRules.DELETE("/:id", rulesViews.DeleteBypassRule)
 		}
 
@@ -166,6 +172,7 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			system.GET("/health", systemViews.GetHealth)
 			system.GET("/info", systemViews.GetSystemInfo)
 			system.GET("/config", systemViews.GetConfig)
+			system.GET("/export", systemViews.Export)
 		}
 	}
 

@@ -334,6 +334,66 @@ func (v *RulesViews) DeleteTimeRule(ctx *gin.Context) {
 	})
 }
 
+// GetTimeRule returns a single time rule by ID.
+func (v *RulesViews) GetTimeRule(ctx *gin.Context) {
+	profileID := ctx.Param("id")
+	ruleID := ctx.Param("ruleID")
+
+	timeRule, err := v.timeRuleStore.Get(ctx.Request.Context(), profileID, ruleID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"error":   "not_found",
+				"message": "Time rule not found",
+			})
+			return
+		}
+		v.logger.Error().Err(err).Str("ruleID", ruleID).Msg("Failed to get time rule")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve time rule",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, timeRule)
+}
+
+// UpdateTimeRule updates an existing time rule.
+func (v *RulesViews) UpdateTimeRule(ctx *gin.Context) {
+	profileID := ctx.Param("id")
+	ruleID := ctx.Param("ruleID")
+
+	var timeRule storage.TimeRule
+	if err := ctx.ShouldBindJSON(&timeRule); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid request body",
+		})
+		return
+	}
+
+	// Ensure IDs match
+	timeRule.ID = ruleID
+	timeRule.ProfileID = profileID
+
+	if err := v.timeRuleStore.Upsert(ctx.Request.Context(), timeRule); err != nil {
+		v.logger.Error().Err(err).Str("ruleID", ruleID).Msg("Failed to update time rule")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to update time rule",
+		})
+		return
+	}
+
+	if err := v.policyEngine.Reload(); err != nil {
+		v.logger.Error().Err(err).Msg("Failed to reload policy engine")
+	}
+
+	v.logger.Info().Str("id", ruleID).Msg("Time rule updated")
+	ctx.JSON(http.StatusOK, timeRule)
+}
+
 // === Usage Limits ===
 
 // ListUsageLimits returns all usage limits for a profile.
@@ -420,6 +480,66 @@ func (v *RulesViews) DeleteUsageLimit(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "Usage limit deleted successfully",
 	})
+}
+
+// GetUsageLimit returns a single usage limit by ID.
+func (v *RulesViews) GetUsageLimit(ctx *gin.Context) {
+	profileID := ctx.Param("id")
+	limitID := ctx.Param("limitID")
+
+	limit, err := v.usageLimitStore.Get(ctx.Request.Context(), profileID, limitID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"error":   "not_found",
+				"message": "Usage limit not found",
+			})
+			return
+		}
+		v.logger.Error().Err(err).Str("limitID", limitID).Msg("Failed to get usage limit")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve usage limit",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, limit)
+}
+
+// UpdateUsageLimit updates an existing usage limit.
+func (v *RulesViews) UpdateUsageLimit(ctx *gin.Context) {
+	profileID := ctx.Param("id")
+	limitID := ctx.Param("limitID")
+
+	var limit storage.UsageLimit
+	if err := ctx.ShouldBindJSON(&limit); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid request body",
+		})
+		return
+	}
+
+	// Ensure IDs match
+	limit.ID = limitID
+	limit.ProfileID = profileID
+
+	if err := v.usageLimitStore.Upsert(ctx.Request.Context(), limit); err != nil {
+		v.logger.Error().Err(err).Str("limitID", limitID).Msg("Failed to update usage limit")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to update usage limit",
+		})
+		return
+	}
+
+	if err := v.policyEngine.Reload(); err != nil {
+		v.logger.Error().Err(err).Msg("Failed to reload policy engine")
+	}
+
+	v.logger.Info().Str("id", limitID).Msg("Usage limit updated")
+	ctx.JSON(http.StatusOK, limit)
 }
 
 // === Bypass Rules ===
@@ -518,4 +638,62 @@ func (v *RulesViews) DeleteBypassRule(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "Bypass rule deleted successfully",
 	})
+}
+
+// GetBypassRule returns a single bypass rule by ID.
+func (v *RulesViews) GetBypassRule(ctx *gin.Context) {
+	ruleID := ctx.Param("id")
+
+	rule, err := v.bypassRuleStore.Get(ctx.Request.Context(), ruleID)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"error":   "not_found",
+				"message": "Bypass rule not found",
+			})
+			return
+		}
+		v.logger.Error().Err(err).Str("ruleID", ruleID).Msg("Failed to get bypass rule")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve bypass rule",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, rule)
+}
+
+// UpdateBypassRule updates an existing bypass rule.
+func (v *RulesViews) UpdateBypassRule(ctx *gin.Context) {
+	ruleID := ctx.Param("id")
+
+	var rule storage.BypassRule
+	if err := ctx.ShouldBindJSON(&rule); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid request body",
+		})
+		return
+	}
+
+	// Ensure ID matches
+	rule.ID = ruleID
+	rule.UpdatedAt = time.Now()
+
+	if err := v.bypassRuleStore.Upsert(ctx.Request.Context(), rule); err != nil {
+		v.logger.Error().Err(err).Str("ruleID", ruleID).Msg("Failed to update bypass rule")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to update bypass rule",
+		})
+		return
+	}
+
+	if err := v.policyEngine.Reload(); err != nil {
+		v.logger.Error().Err(err).Msg("Failed to reload policy engine")
+	}
+
+	v.logger.Info().Str("id", ruleID).Str("domain", rule.Domain).Msg("Bypass rule updated")
+	ctx.JSON(http.StatusOK, rule)
 }

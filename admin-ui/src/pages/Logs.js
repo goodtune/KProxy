@@ -115,13 +115,14 @@ const Logs = () => {
                     <th>Host</th>
                     <th>Path</th>
                     <th>Action</th>
+                    <th>Reason</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {logs.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="empty-message">No logs found</td>
+                      <td colSpan="8" className="empty-message">No logs found</td>
                     </tr>
                   ) : (
                     logs.map((log, index) => (
@@ -136,6 +137,7 @@ const Logs = () => {
                             {log.action || 'ALLOW'}
                           </span>
                         </td>
+                        <td className="reason">{log.reason || '-'}</td>
                         <td>{log.status_code || '-'}</td>
                       </tr>
                     ))

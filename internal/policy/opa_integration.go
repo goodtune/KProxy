@@ -139,8 +139,8 @@ func (e *Engine) buildProxyInput(req *ProxyRequest) map[string]interface{} {
 		}
 	}
 
-	// Get current time info
-	now := time.Now()
+	// Get current time info from clock
+	now := e.clock.Now()
 	currentTime := map[string]interface{}{
 		"day_of_week": int(now.Weekday()),
 		"minutes":     now.Hour()*60 + now.Minute(),

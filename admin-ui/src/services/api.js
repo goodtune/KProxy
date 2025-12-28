@@ -120,23 +120,101 @@ export const getRules = async () => {
   return response.data.rules || [];
 };
 
-export const getRule = async (id) => {
-  const response = await api.get(`/rules/${id}`);
+export const getRule = async (profileId, ruleId) => {
+  const response = await api.get(`/profiles/${profileId}/rules/${ruleId}`);
   return response.data;
 };
 
 export const createRule = async (rule) => {
-  const response = await api.post('/rules', rule);
+  const response = await api.post(`/profiles/${rule.profile_id}/rules`, rule);
   return response.data;
 };
 
-export const updateRule = async (id, rule) => {
-  const response = await api.put(`/rules/${id}`, rule);
+export const updateRule = async (profileId, ruleId, rule) => {
+  const response = await api.put(`/profiles/${profileId}/rules/${ruleId}`, rule);
   return response.data;
 };
 
-export const deleteRule = async (id) => {
-  const response = await api.delete(`/rules/${id}`);
+export const deleteRule = async (profileId, ruleId) => {
+  const response = await api.delete(`/profiles/${profileId}/rules/${ruleId}`);
+  return response.data;
+};
+
+// Time Rules endpoints
+export const getTimeRules = async (profileId) => {
+  const response = await api.get(`/profiles/${profileId}/time-rules`);
+  return response.data.time_rules || [];
+};
+
+export const getTimeRule = async (profileId, ruleId) => {
+  const response = await api.get(`/profiles/${profileId}/time-rules/${ruleId}`);
+  return response.data;
+};
+
+export const createTimeRule = async (profileId, timeRule) => {
+  const response = await api.post(`/profiles/${profileId}/time-rules`, timeRule);
+  return response.data;
+};
+
+export const updateTimeRule = async (profileId, ruleId, timeRule) => {
+  const response = await api.put(`/profiles/${profileId}/time-rules/${ruleId}`, timeRule);
+  return response.data;
+};
+
+export const deleteTimeRule = async (profileId, ruleId) => {
+  const response = await api.delete(`/profiles/${profileId}/time-rules/${ruleId}`);
+  return response.data;
+};
+
+// Usage Limits endpoints
+export const getUsageLimits = async (profileId) => {
+  const response = await api.get(`/profiles/${profileId}/usage-limits`);
+  return response.data.usage_limits || [];
+};
+
+export const getUsageLimit = async (profileId, limitId) => {
+  const response = await api.get(`/profiles/${profileId}/usage-limits/${limitId}`);
+  return response.data;
+};
+
+export const createUsageLimit = async (profileId, limit) => {
+  const response = await api.post(`/profiles/${profileId}/usage-limits`, limit);
+  return response.data;
+};
+
+export const updateUsageLimit = async (profileId, limitId, limit) => {
+  const response = await api.put(`/profiles/${profileId}/usage-limits/${limitId}`, limit);
+  return response.data;
+};
+
+export const deleteUsageLimit = async (profileId, limitId) => {
+  const response = await api.delete(`/profiles/${profileId}/usage-limits/${limitId}`);
+  return response.data;
+};
+
+// Bypass Rules endpoints
+export const getBypassRules = async () => {
+  const response = await api.get('/bypass-rules');
+  return response.data.bypass_rules || [];
+};
+
+export const getBypassRule = async (id) => {
+  const response = await api.get(`/bypass-rules/${id}`);
+  return response.data;
+};
+
+export const createBypassRule = async (rule) => {
+  const response = await api.post('/bypass-rules', rule);
+  return response.data;
+};
+
+export const updateBypassRule = async (id, rule) => {
+  const response = await api.put(`/bypass-rules/${id}`, rule);
+  return response.data;
+};
+
+export const deleteBypassRule = async (id) => {
+  const response = await api.delete(`/bypass-rules/${id}`);
   return response.data;
 };
 

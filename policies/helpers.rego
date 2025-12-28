@@ -66,9 +66,9 @@ within_time_window(current_time, time_rule) if {
 	start_minutes := parse_time_to_minutes(time_rule.start_time)
 	end_minutes := parse_time_to_minutes(time_rule.end_time)
 
-	# Check if current time is within window
+	# Check if current time is within window (inclusive of both start and end)
 	current_time.minutes >= start_minutes
-	current_time.minutes < end_minutes
+	current_time.minutes <= end_minutes
 }
 
 # Parse "HH:MM" to minutes since midnight

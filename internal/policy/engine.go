@@ -46,6 +46,7 @@ type Engine struct {
 	usageTracker  UsageTracker
 	logger        zerolog.Logger
 	mu            sync.RWMutex
+	clock         Clock // Clock interface for time-based policy evaluation
 
 	// OPA engine for policy evaluation
 	opaEngine *opa.Engine
@@ -66,6 +67,7 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 		bypassRules:   make([]*BypassRule, 0),
 		globalBypass:  globalBypass,
 		useMACAddress: useMACAddress,
+		clock:         RealClock{}, // Use real time by default
 		logger:        logger.With().Str("component", "policy").Logger(),
 	}
 
@@ -92,6 +94,14 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 	}
 
 	return e, nil
+}
+
+// SetClock sets the clock for time-based policy evaluation.
+// This is primarily used for testing to inject a fixed time.
+func (e *Engine) SetClock(clock Clock) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.clock = clock
 }
 
 // Reload reloads all policy data from storage

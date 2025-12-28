@@ -37,6 +37,18 @@ const Sidebar = () => {
           <span className="nav-icon">📋</span>
           Rules
         </Link>
+        <Link to="/time-rules" className={`nav-item ${isActive('/time-rules')}`}>
+          <span className="nav-icon">🕐</span>
+          Time Rules
+        </Link>
+        <Link to="/usage-limits" className={`nav-item ${isActive('/usage-limits')}`}>
+          <span className="nav-icon">⏱️</span>
+          Usage Limits
+        </Link>
+        <Link to="/bypass-rules" className={`nav-item ${isActive('/bypass-rules')}`}>
+          <span className="nav-icon">🔓</span>
+          Bypass Rules
+        </Link>
         <Link to="/logs" className={`nav-item ${isActive('/logs')}`}>
           <span className="nav-icon">📄</span>
           Logs

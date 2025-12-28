@@ -5,6 +5,7 @@ import (
 	"net"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/storage"
@@ -911,6 +912,310 @@ func openTestStore(t *testing.T) storage.Store {
 		t.Fatalf("failed to open test store: %v", err)
 	}
 	return store
+}
+
+// TestPolicyEnforcement_TimeRestrictions tests that time rules properly restrict
+// access to specific domains outside of allowed hours.
+// This test matches the real-world parental control configuration with:
+// - Profile with default_allow=false (block by default)
+// - Rule to ALLOW .example.com
+// - TimeRule restricting that rule to 06:00-23:20
+// Expected behavior:
+// - During 06:00-23:20: Access to .example.com should be ALLOWED
+// - Outside 06:00-23:20: Access to .example.com should be BLOCKED with time-related reason
+// - Other domains: BLOCKED (no matching rule, default_allow=false)
+func TestPolicyEnforcement_TimeRestrictions(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+
+	// Create "Kids" profile with default_allow=false (realistic parental control)
+	profile := storage.Profile{
+		ID:           "profile-kids",
+		Name:         "Kids",
+		DefaultAllow: false,
+	}
+	if err := store.Profiles().Upsert(context.Background(), profile); err != nil {
+		t.Fatalf("failed to create profile: %v", err)
+	}
+
+	// Create device for Kids Network (192.168.5.0/24)
+	device := storage.Device{
+		ID:          "dev-kids",
+		Name:        "Kids Network",
+		Identifiers: []string{"192.168.5.0/24"},
+		ProfileID:   "profile-kids",
+		Active:      true,
+	}
+	if err := store.Devices().Upsert(context.Background(), device); err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+
+	// Create ALLOW rule for .example.com
+	rule := storage.Rule{
+		ID:        "rule-example",
+		ProfileID: "profile-kids",
+		Domain:    ".example.com",
+		Paths:     []string{},
+		Action:    storage.ActionAllow,
+		Priority:  100,
+	}
+	if err := store.Rules().Upsert(context.Background(), rule); err != nil {
+		t.Fatalf("failed to create rule: %v", err)
+	}
+
+	// Create TimeRule restricting the above rule to 06:00-23:20 (all days)
+	timeRule := storage.TimeRule{
+		ID:         "timerule-kids",
+		ProfileID:  "profile-kids",
+		DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6}, // All days
+		StartTime:  "06:00",
+		EndTime:    "23:20",
+		RuleIDs:    []string{"rule-example"}, // Apply only to this specific rule
+	}
+	if err := store.TimeRules().Upsert(context.Background(), timeRule); err != nil {
+		t.Fatalf("failed to create time rule: %v", err)
+	}
+
+	engine := newTestEngine(t, store)
+
+	// Test client from Kids Network
+	clientIP := "192.168.5.100"
+
+	tests := []struct {
+		name                 string
+		domain               string
+		dayOfWeek            int    // 0=Sunday, 1=Monday, etc.
+		minutesSinceMidnight int    // Time of day in minutes (e.g., 360 = 06:00)
+		wantAction           Action
+		wantReason           string // Expected exact reason (empty = don't check)
+		wantReasonNot        string // Reason must NOT equal this (empty = don't check)
+		description          string
+	}{
+		{
+			name:             "access_during_allowed_hours_morning",
+			domain:           "www.example.com",
+			dayOfWeek:        2, // Tuesday
+			minutesSinceMidnight: 360, // 06:00 (start of allowed period)
+			wantAction:       ActionAllow,
+			description:      "should ALLOW at start of time window (06:00)",
+		},
+		{
+			name:             "access_during_allowed_hours_midday",
+			domain:           "example.com",
+			dayOfWeek:        3, // Wednesday
+			minutesSinceMidnight: 600, // 10:00 (middle of allowed period)
+			wantAction:       ActionAllow,
+			description:      "should ALLOW during time window (10:00)",
+		},
+		{
+			name:             "access_during_allowed_hours_evening",
+			domain:           "mail.example.com",
+			dayOfWeek:        4, // Thursday
+			minutesSinceMidnight: 1400, // 23:20 (end of allowed period)
+			wantAction:       ActionAllow,
+			description:      "should ALLOW at end of time window (23:20)",
+		},
+		{
+			name:                 "access_before_allowed_hours",
+			domain:               "www.example.com",
+			dayOfWeek:            2, // Tuesday
+			minutesSinceMidnight: 300, // 05:00 (before allowed period)
+			wantAction:           ActionBlock,
+			wantReason:           "outside allowed hours",
+			description:          "should BLOCK before time window (05:00) with time restriction reason",
+		},
+		{
+			name:                 "access_after_allowed_hours",
+			domain:               "example.com",
+			dayOfWeek:            5, // Friday
+			minutesSinceMidnight: 1410, // 23:30 (after allowed period)
+			wantAction:           ActionBlock,
+			wantReason:           "outside allowed hours",
+			description:          "should BLOCK after time window (23:30) with time restriction reason",
+		},
+		{
+			name:                 "access_late_night",
+			domain:               "mail.example.com",
+			dayOfWeek:            6, // Saturday
+			minutesSinceMidnight: 120, // 02:00 (well outside allowed period)
+			wantAction:           ActionBlock,
+			wantReason:           "outside allowed hours",
+			description:          "should BLOCK late at night (02:00) with time restriction reason",
+		},
+		{
+			name:                 "different_domain_no_rule",
+			domain:               "other.com",
+			dayOfWeek:            2, // Tuesday
+			minutesSinceMidnight: 300, // 05:00 (outside time window for .example.com)
+			wantAction:           ActionBlock,
+			wantReason:           "default deny",
+			wantReasonNot:        "outside allowed hours",
+			description:          "different domain should be blocked with default deny, not time restriction",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set the test clock to specific time
+			testTime := time.Date(2025, 1, int(tt.dayOfWeek)+4, // Sunday=0, so offset to get right weekday
+				tt.minutesSinceMidnight/60,        // hours
+				tt.minutesSinceMidnight%60,        // minutes
+				0, 0, time.Local)
+			engine.SetClock(&TestClock{CurrentTime: testTime})
+
+			req := &ProxyRequest{
+				ClientIP: net.ParseIP(clientIP),
+				Host:     tt.domain,
+				Path:     "/",
+			}
+			decision := engine.Evaluate(req)
+
+			// Check action
+			if decision.Action != tt.wantAction {
+				t.Errorf("Evaluate() action = %v, want %v: %s (reason: %s)",
+					decision.Action, tt.wantAction, tt.description, decision.Reason)
+			}
+
+			// Check exact reason match
+			if tt.wantReason != "" {
+				if decision.Reason != tt.wantReason {
+					t.Errorf("Evaluate() reason = %q, want %q: %s",
+						decision.Reason, tt.wantReason, tt.description)
+				}
+			}
+
+			// Check reason does NOT equal unwanted value
+			if tt.wantReasonNot != "" {
+				if decision.Reason == tt.wantReasonNot {
+					t.Errorf("Evaluate() reason = %q, must not equal %q: %s",
+						decision.Reason, tt.wantReasonNot, tt.description)
+				}
+			}
+		})
+	}
+}
+
+// TestPolicyEnforcement_BypassAction tests that BYPASS rules work correctly
+// Reproduces issue where BYPASS rules cause "no results from proxy query"
+func TestPolicyEnforcement_BypassAction(t *testing.T) {
+	store := openTestStore(t)
+	defer store.Close()
+
+	// Create "Kids" profile with default_allow=false (block by default)
+	profile := storage.Profile{
+		ID:           "profile-kids",
+		Name:         "Kids",
+		DefaultAllow: false,
+	}
+	if err := store.Profiles().Upsert(context.Background(), profile); err != nil {
+		t.Fatalf("failed to create profile: %v", err)
+	}
+
+	// Create device for Kids Network (192.168.5.0/24)
+	device := storage.Device{
+		ID:          "dev-kids",
+		Name:        "Kids Network",
+		Identifiers: []string{"192.168.5.0/24"},
+		ProfileID:   "profile-kids",
+		Active:      true,
+	}
+	if err := store.Devices().Upsert(context.Background(), device); err != nil {
+		t.Fatalf("failed to create device: %v", err)
+	}
+
+	// Create BYPASS rule for slackb.com (exact match, no leading dot)
+	bypassRule := storage.Rule{
+		ID:        "rule-slackb",
+		ProfileID: "profile-kids",
+		Domain:    "slackb.com",
+		Paths:     []string{}, // Empty = match all paths
+		Action:    storage.ActionBypass,
+		Priority:  100,
+		Category:  "",
+	}
+	if err := store.Rules().Upsert(context.Background(), bypassRule); err != nil {
+		t.Fatalf("failed to create bypass rule: %v", err)
+	}
+
+	// Create ALLOW rule for .example.com for comparison
+	allowRule := storage.Rule{
+		ID:        "rule-example",
+		ProfileID: "profile-kids",
+		Domain:    ".example.com",
+		Paths:     []string{},
+		Action:    storage.ActionAllow,
+		Priority:  100,
+		Category:  "test",
+	}
+	if err := store.Rules().Upsert(context.Background(), allowRule); err != nil {
+		t.Fatalf("failed to create allow rule: %v", err)
+	}
+
+	engine := newTestEngine(t, store)
+
+	// Test client from Kids Network
+	clientIP := "192.168.5.100"
+
+	tests := []struct {
+		name         string
+		host         string
+		path         string
+		wantAction   Action
+		wantReason   string
+		description  string
+	}{
+		{
+			name:        "bypass_rule_exact_domain",
+			host:        "slackb.com",
+			path:        "/traces/v1/list_of_spans/proto",
+			wantAction:  ActionBypass,
+			wantReason:  "matched rule: rule-slackb",
+			description: "BYPASS rule for slackb.com should work",
+		},
+		{
+			name:        "allow_rule_with_leading_dot",
+			host:        "www.example.com",
+			path:        "/",
+			wantAction:  ActionAllow,
+			wantReason:  "matched rule: rule-example",
+			description: "ALLOW rule for .example.com should work",
+		},
+		{
+			name:        "no_matching_rule_default_deny",
+			host:        "other.com",
+			path:        "/",
+			wantAction:  ActionBlock,
+			wantReason:  "default deny",
+			description: "No matching rule should use default_allow=false -> BLOCK",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &ProxyRequest{
+				ClientIP: net.ParseIP(clientIP),
+				Host:     tt.host,
+				Path:     tt.path,
+				Method:   "POST",
+			}
+
+			decision := engine.Evaluate(req)
+
+			// Check action
+			if decision.Action != tt.wantAction {
+				t.Errorf("Evaluate() action = %v, want %v: %s (reason: %s)",
+					decision.Action, tt.wantAction, tt.description, decision.Reason)
+			}
+
+			// Check reason
+			if tt.wantReason != "" {
+				if decision.Reason != tt.wantReason {
+					t.Errorf("Evaluate() reason = %q, want %q: %s",
+						decision.Reason, tt.wantReason, tt.description)
+				}
+			}
+		})
+	}
 }
 
 func newTestEngine(t *testing.T, store storage.Store) *Engine {

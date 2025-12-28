@@ -6,6 +6,9 @@ import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
 import Profiles from './pages/Profiles';
 import Rules from './pages/Rules';
+import TimeRules from './pages/TimeRules';
+import UsageLimits from './pages/UsageLimits';
+import BypassRules from './pages/BypassRules';
 import Logs from './pages/Logs';
 import { isAuthenticated } from './services/api';
 
@@ -48,6 +51,30 @@ function App() {
           element={
             <ProtectedRoute>
               <Rules />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/time-rules"
+          element={
+            <ProtectedRoute>
+              <TimeRules />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/usage-limits"
+          element={
+            <ProtectedRoute>
+              <UsageLimits />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bypass-rules"
+          element={
+            <ProtectedRoute>
+              <BypassRules />
             </ProtectedRoute>
           }
         />

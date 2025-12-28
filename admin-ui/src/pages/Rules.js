@@ -12,10 +12,11 @@ const Rules = () => {
   const [formData, setFormData] = useState({
     profile_id: '',
     domain: '',
-    path: '',
+    paths: [],
     action: 'ALLOW',
     priority: 100,
     category: '',
+    inject_timer: false,
   });
 
   useEffect(() => {
@@ -55,7 +56,7 @@ const Rules = () => {
       };
 
       if (editingRule) {
-        await updateRule(editingRule.id, ruleData);
+        await updateRule(formData.profile_id, editingRule.id, ruleData);
       } else {
         await createRule(ruleData);
       }
@@ -65,10 +66,11 @@ const Rules = () => {
       setFormData({
         profile_id: '',
         domain: '',
-        path: '',
+        paths: [],
         action: 'ALLOW',
         priority: 100,
         category: '',
+        inject_timer: false,
       });
       loadRules();
     } catch (err) {
@@ -81,19 +83,20 @@ const Rules = () => {
     setFormData({
       profile_id: rule.profile_id || '',
       domain: rule.domain || '',
-      path: rule.path || '',
+      paths: rule.paths || [],
       action: rule.action || 'ALLOW',
       priority: rule.priority || 100,
       category: rule.category || '',
+      inject_timer: rule.inject_timer || false,
     });
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (rule) => {
     if (!window.confirm('Are you sure you want to delete this rule?')) return;
 
     try {
-      await deleteRule(id);
+      await deleteRule(rule.profile_id, rule.id);
       loadRules();
     } catch (err) {
       setError('Failed to delete rule');
@@ -106,10 +109,11 @@ const Rules = () => {
     setFormData({
       profile_id: '',
       domain: '',
-      path: '',
+      paths: [],
       action: 'ALLOW',
       priority: 100,
       category: '',
+      inject_timer: false,
     });
   };
 
@@ -158,13 +162,28 @@ const Rules = () => {
               </div>
 
               <div className="form-group">
-                <label>Path Pattern (optional)</label>
+                <label>Path Patterns (optional, comma-separated)</label>
                 <input
                   type="text"
-                  value={formData.path}
-                  onChange={(e) => setFormData({ ...formData, path: e.target.value })}
-                  placeholder="e.g., /watch or /videos/*"
+                  value={Array.isArray(formData.paths) ? formData.paths.join(', ') : ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Only split and filter on blur or when submitting, allow free typing
+                    setFormData({
+                      ...formData,
+                      paths: value ? value.split(',').map(p => p.trim()) : []
+                    });
+                  }}
+                  onBlur={(e) => {
+                    // Clean up empty entries when user leaves the field
+                    setFormData({
+                      ...formData,
+                      paths: formData.paths.filter(p => p)
+                    });
+                  }}
+                  placeholder="e.g., /watch, /videos/*"
                 />
+                <small>Enter multiple path patterns separated by commas</small>
               </div>
 
               <div className="form-group">
@@ -176,6 +195,7 @@ const Rules = () => {
                 >
                   <option value="ALLOW">ALLOW</option>
                   <option value="BLOCK">BLOCK</option>
+                  <option value="BYPASS">BYPASS</option>
                 </select>
               </div>
 
@@ -199,6 +219,18 @@ const Rules = () => {
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   placeholder="e.g., social_media, streaming, gaming"
                 />
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={formData.inject_timer}
+                    onChange={(e) => setFormData({ ...formData, inject_timer: e.target.checked })}
+                  />
+                  {' '}Inject Timer Overlay
+                </label>
+                <small>Show time remaining overlay for ALLOW rules with usage limits</small>
               </div>
 
               <div className="form-actions">
@@ -239,9 +271,13 @@ const Rules = () => {
                     <tr key={rule.id}>
                       <td>{profiles.find(p => p.id === rule.profile_id)?.name || 'Unknown'}</td>
                       <td>{rule.domain}</td>
-                      <td>{rule.path || '-'}</td>
+                      <td>{rule.paths && rule.paths.length > 0 ? rule.paths.join(', ') : '-'}</td>
                       <td>
-                        <span className={`badge ${rule.action === 'ALLOW' ? 'badge-success' : 'badge-danger'}`}>
+                        <span className={`badge ${
+                          rule.action === 'ALLOW' ? 'badge-success' :
+                          rule.action === 'BLOCK' ? 'badge-danger' :
+                          'badge-info'
+                        }`}>
                           {rule.action}
                         </span>
                       </td>
@@ -251,7 +287,7 @@ const Rules = () => {
                         <button onClick={() => handleEdit(rule)} className="btn btn-sm btn-secondary">
                           Edit
                         </button>
-                        <button onClick={() => handleDelete(rule.id)} className="btn btn-sm btn-danger">
+                        <button onClick={() => handleDelete(rule)} className="btn btn-sm btn-danger">
                           Delete
                         </button>
                       </td>

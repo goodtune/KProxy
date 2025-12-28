@@ -79,24 +79,33 @@ decision := {
 	"action": "BLOCK",
 	"reason": "outside allowed hours",
 	"block_page": "time_restriction",
-	"matched_rule_id": "",
-	"category": "",
+	"matched_rule_id": matched.id,
+	"category": matched.category,
 	"inject_timer": false,
 	"time_remaining_minutes": 0,
 	"usage_limit_id": "",
 } if {
 	identified := device.identified_device
 	profile := input.profiles[identified.profile_id]
-	not time_allowed(profile)
+
+	# Find matching rule (must exist)
+	matched := first_matching_rule(profile)
+	matched # Ensure matched is defined
+
+	# Check time restriction for this specific rule
+	not time_allowed_for_rule(profile, matched.id)
 }
 
 decision := result if {
 	identified := device.identified_device
 	profile := input.profiles[identified.profile_id]
-	time_allowed(profile)
 
-	# Find matching rule
+	# Find matching rule (must exist)
 	matched := first_matching_rule(profile)
+	matched # Ensure matched is defined
+
+	# Check time restriction for this specific rule
+	time_allowed_for_rule(profile, matched.id)
 
 	# Evaluate based on rule action
 	result := evaluate_rule(matched, profile)
@@ -114,7 +123,6 @@ decision := {
 } if {
 	identified := device.identified_device
 	profile := input.profiles[identified.profile_id]
-	time_allowed(profile)
 	not first_matching_rule(profile)
 	profile.default_allow
 	action := "ALLOW"
@@ -132,21 +140,47 @@ decision := {
 } if {
 	identified := device.identified_device
 	profile := input.profiles[identified.profile_id]
-	time_allowed(profile)
 	not first_matching_rule(profile)
 	not profile.default_allow
 	action := "BLOCK"
 }
 
-# Check if time is allowed for profile
-time_allowed(profile) if {
+# Check if time is allowed for a specific rule
+# If no time rules apply to this rule, it's always allowed
+time_allowed_for_rule(profile, rule_id) if {
+	# No time rules at all
 	count(profile.time_rules) == 0
 }
 
-time_allowed(profile) if {
+time_allowed_for_rule(profile, rule_id) if {
+	# Has time rules, but none apply to this specific rule
 	count(profile.time_rules) > 0
-	some rule in profile.time_rules
-	helpers.within_time_window(input.current_time, rule)
+	not any_time_rule_applies(profile.time_rules, rule_id)
+}
+
+time_allowed_for_rule(profile, rule_id) if {
+	# Has time rules that apply, check if current time is within allowed window
+	count(profile.time_rules) > 0
+	some time_rule in profile.time_rules
+	applies_to_rule(time_rule, rule_id)
+	helpers.within_time_window(input.current_time, time_rule)
+}
+
+# Check if any time rule applies to this rule ID
+any_time_rule_applies(time_rules, rule_id) if {
+	some time_rule in time_rules
+	applies_to_rule(time_rule, rule_id)
+}
+
+# Check if time rule applies to specific rule ID
+applies_to_rule(time_rule, rule_id) if {
+	# If rule_ids is empty, applies to all rules
+	count(time_rule.rule_ids) == 0
+}
+
+applies_to_rule(time_rule, rule_id) if {
+	# If rule_ids specified, check if rule_id is in the list
+	rule_id in time_rule.rule_ids
 }
 
 # Find first matching rule (by priority order - already sorted descending)
@@ -230,6 +264,19 @@ evaluate_rule(rule, profile) := {
 	"usage_limit_id": "",
 } if {
 	rule.action == "BLOCK"
+}
+
+evaluate_rule(rule, profile) := {
+	"action": rule.action,
+	"reason": sprintf("matched rule: %s", [rule.id]),
+	"block_page": "",
+	"matched_rule_id": rule.id,
+	"category": rule.category,
+	"inject_timer": false,
+	"time_remaining_minutes": 0,
+	"usage_limit_id": "",
+} if {
+	rule.action == "BYPASS"
 }
 
 # Helper: get remaining time
