@@ -158,7 +158,7 @@ export const getUsageLogs = async (params) => {
 
 // Stats endpoints
 export const getStats = async () => {
-  const response = await api.get('/stats');
+  const response = await api.get('/stats/dashboard');
   return response.data;
 };
 

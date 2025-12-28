@@ -45,6 +45,7 @@ type ProfileStore interface {
 type RuleStore interface {
 	Get(ctx context.Context, profileID, id string) (*Rule, error)
 	ListByProfile(ctx context.Context, profileID string) ([]Rule, error)
+	ListAll(ctx context.Context) ([]Rule, error)
 	Upsert(ctx context.Context, rule Rule) error
 	Delete(ctx context.Context, profileID, id string) error
 }

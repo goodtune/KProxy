@@ -41,6 +41,24 @@ func NewRulesViews(
 
 // === Regular Rules ===
 
+// ListAllRules returns all rules across all profiles.
+func (v *RulesViews) ListAllRules(ctx *gin.Context) {
+	rules, err := v.ruleStore.ListAll(ctx.Request.Context())
+	if err != nil {
+		v.logger.Error().Err(err).Msg("Failed to list all rules")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve rules",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"rules": rules,
+		"count": len(rules),
+	})
+}
+
 // ListRules returns all rules for a profile.
 func (v *RulesViews) ListRules(ctx *gin.Context) {
 	profileID := ctx.Param("id")

@@ -84,6 +84,12 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			profiles.DELETE("/:id", profileViews.Delete)
 		}
 
+		// Rules management (global - list all rules)
+		rules := api.Group("/rules")
+		{
+			rules.GET("", rulesViews.ListAllRules)
+		}
+
 		// Rules management (nested under profiles)
 		profileRules := api.Group("/profiles/:id")
 		{

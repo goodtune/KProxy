@@ -69,6 +69,24 @@ const Logs = () => {
 
         <div className="filters-section">
           <div className="form-group">
+            <label>Device ID</label>
+            <input
+              type="text"
+              placeholder="Filter by device ID"
+              value={filters.device_id}
+              onChange={(e) => setFilters({ ...filters, device_id: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Domain</label>
+            <input
+              type="text"
+              placeholder="Filter by domain"
+              value={filters.domain || ''}
+              onChange={(e) => setFilters({ ...filters, domain: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
             <label>Limit</label>
             <select
               value={filters.limit}
