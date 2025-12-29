@@ -156,11 +156,8 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		s.logRequest(policyReq, decision, http.StatusOK, 0, duration)
 
 		// Record metrics
-		device := s.policyEngine.IdentifyDevice(clientIP, nil)
-		deviceName := "unknown"
-		if device != nil {
-			deviceName = device.Name
-		}
+		// Device identification now happens in OPA; use client IP for metrics
+		deviceName := clientIP.String()
 
 		metrics.RequestsTotal.WithLabelValues(deviceName, policyReq.Host, string(decision.Action), policyReq.Method).Inc()
 		metrics.RequestDuration.WithLabelValues(deviceName, string(decision.Action)).Observe(time.Since(startTime).Seconds())
@@ -212,11 +209,8 @@ func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 		s.logRequest(policyReq, decision, http.StatusOK, 0, duration)
 
 		// Record metrics
-		device := s.policyEngine.IdentifyDevice(clientIP, nil)
-		deviceName := "unknown"
-		if device != nil {
-			deviceName = device.Name
-		}
+		// Device identification now happens in OPA; use client IP for metrics
+		deviceName := clientIP.String()
 
 		metrics.RequestsTotal.WithLabelValues(deviceName, policyReq.Host, string(decision.Action), policyReq.Method).Inc()
 		metrics.RequestDuration.WithLabelValues(deviceName, string(decision.Action)).Observe(time.Since(startTime).Seconds())
@@ -309,12 +303,8 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request, isHTTPS boo
 func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *policy.PolicyDecision) {
 	// Get device info
 	clientIP := s.extractClientIP(r)
-	device := s.policyEngine.IdentifyDevice(clientIP, nil)
-
-	deviceName := "Unknown Device"
-	if device != nil {
-		deviceName = device.Name
-	}
+	// Device identification now happens in OPA; use client IP for display
+	deviceName := clientIP.String()
 
 	// Render block page
 	blockHTML := fmt.Sprintf(`<!DOCTYPE html>
@@ -412,13 +402,12 @@ func (s *Server) extractClientIP(r *http.Request) net.IP {
 
 // logRequest logs a proxied request
 func (s *Server) logRequest(req *policy.ProxyRequest, decision *policy.PolicyDecision, statusCode int, responseSize int64, durationMS int64) {
-	device := s.policyEngine.IdentifyDevice(req.ClientIP, req.ClientMAC)
-
-	var deviceID, deviceName string
-	if device != nil {
-		deviceID = device.ID
-		deviceName = device.Name
+	// Device identification now happens in OPA; use client IP/MAC for logging
+	deviceID := req.ClientIP.String()
+	if req.ClientMAC != nil {
+		deviceID = req.ClientMAC.String()
 	}
+	deviceName := deviceID
 
 	err := s.logStore.AddRequestLog(context.Background(), storage.RequestLog{
 		DeviceID:     deviceID,

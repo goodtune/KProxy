@@ -180,13 +180,13 @@ func (t *Tracker) GetTodayUsage(deviceID, limitID string, resetTime time.Time) (
 }
 
 // GetUsageStats returns current usage statistics for a device and limit
-func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*policy.UsageStats, error) {
+func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*UsageStats, error) {
 	todayUsage, err := t.GetTodayUsage(deviceID, limitID, resetTime)
 	if err != nil {
 		return nil, err
 	}
 
-	stats := &policy.UsageStats{
+	stats := &UsageStats{
 		TodayUsage:     todayUsage,
 		RemainingToday: dailyLimit - todayUsage,
 		LimitExceeded:  todayUsage >= dailyLimit,

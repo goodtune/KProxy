@@ -229,11 +229,8 @@ func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		}
 
 		// Record metrics
-		device := s.policyEngine.IdentifyDevice(clientIP, nil)
-		deviceName := "unknown"
-		if device != nil {
-			deviceName = device.Name
-		}
+		// Device identification now happens in OPA; use client IP for metrics
+		deviceName := clientIP.String()
 
 		metrics.DNSQueriesTotal.WithLabelValues(deviceName, logAction, dns.TypeToString[qtype]).Inc()
 		metrics.DNSQueryDuration.WithLabelValues(logAction).Observe(time.Since(startTime).Seconds())
@@ -331,14 +328,10 @@ func (s *Server) getResponseIP(answer dns.RR) string {
 
 // logDNS logs a DNS query to storage
 func (s *Server) logDNS(clientIP net.IP, domain, queryType, action, responseIP, upstream string, latencyMS int64) error {
-	// Identify device
-	device := s.policyEngine.IdentifyDevice(clientIP, nil)
-
-	var deviceID, deviceName string
-	if device != nil {
-		deviceID = device.ID
-		deviceName = device.Name
-	}
+	// Device identification now happens in OPA
+	// Use client IP as device identifier for logging
+	deviceID := clientIP.String()
+	deviceName := clientIP.String()
 
 	return s.logStore.AddDNSLog(context.Background(), storage.DNSLog{
 		DeviceID:   deviceID,
