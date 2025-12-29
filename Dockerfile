@@ -10,10 +10,13 @@ RUN apk add --no-cache git make
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source (including pre-built admin-ui/build directory)
+# Copy source
 COPY . .
 
-# Build binary (will embed the pre-built React app from admin-ui/build)
+# Copy the pre-built React app (web/admin-ui is in .gitignore, so copy explicitly)
+COPY admin-ui/build ./web/admin-ui/build
+
+# Build binary (will embed the pre-built React app from web/admin-ui/build)
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/kproxy ./cmd/kproxy
 
 FROM alpine:3.19 AS runtime
