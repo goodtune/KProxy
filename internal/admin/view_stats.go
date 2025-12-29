@@ -11,43 +11,33 @@ import (
 )
 
 // StatsViews handles statistics-related API requests.
+// Note: Device/profile/rule stats removed - config now in OPA policies
 type StatsViews struct {
-	deviceStore  storage.DeviceStore
-	profileStore storage.ProfileStore
-	ruleStore    storage.RuleStore
-	logStore     storage.LogStore
-	usageStore   storage.UsageStore
-	logger       zerolog.Logger
+	logStore   storage.LogStore
+	usageStore storage.UsageStore
+	logger     zerolog.Logger
 }
 
 // NewStatsViews creates a new statistics views instance.
 func NewStatsViews(
-	deviceStore storage.DeviceStore,
-	profileStore storage.ProfileStore,
-	ruleStore storage.RuleStore,
 	logStore storage.LogStore,
 	usageStore storage.UsageStore,
 	logger zerolog.Logger,
 ) *StatsViews {
 	return &StatsViews{
-		deviceStore:  deviceStore,
-		profileStore: profileStore,
-		ruleStore:    ruleStore,
-		logStore:     logStore,
-		usageStore:   usageStore,
-		logger:       logger.With().Str("handler", "stats").Logger(),
+		logStore:   logStore,
+		usageStore: usageStore,
+		logger:     logger.With().Str("handler", "stats").Logger(),
 	}
 }
 
 // DashboardStats represents the statistics for the dashboard.
+// Note: Device/profile/rule counts removed - config now in OPA policies
 type DashboardStats struct {
-	TotalDevices      int             `json:"total_devices"`
-	TotalProfiles     int             `json:"total_profiles"`
-	TotalRules        int             `json:"total_rules"`
-	RequestsToday     int             `json:"requests_today"`
-	ActiveSessions    int             `json:"active_sessions"`
-	BlockedToday      int             `json:"blocked_today"`
-	RecentBlocks      []BlockInfo     `json:"recent_blocks"`
+	RequestsToday  int         `json:"requests_today"`
+	ActiveSessions int         `json:"active_sessions"`
+	BlockedToday   int         `json:"blocked_today"`
+	RecentBlocks   []BlockInfo `json:"recent_blocks"`
 	TopBlockedDomains []DomainCount   `json:"top_blocked_domains"`
 	RequestTimeline   []TimelinePoint `json:"request_timeline"`
 }
@@ -80,33 +70,7 @@ func (v *StatsViews) GetDashboardStats(ctx *gin.Context) {
 		RequestTimeline:   []TimelinePoint{},
 	}
 
-	// Get total devices
-	devices, err := v.deviceStore.List(ctx.Request.Context())
-	if err != nil {
-		v.logger.Error().Err(err).Msg("Failed to get devices count")
-	} else {
-		stats.TotalDevices = len(devices)
-	}
-
-	// Get total profiles
-	profiles, err := v.profileStore.List(ctx.Request.Context())
-	if err != nil {
-		v.logger.Error().Err(err).Msg("Failed to get profiles count")
-	} else {
-		stats.TotalProfiles = len(profiles)
-	}
-
-	// Get total rules (across all profiles)
-	totalRules := 0
-	for _, profile := range profiles {
-		rules, err := v.ruleStore.ListByProfile(ctx.Request.Context(), profile.ID)
-		if err != nil {
-			v.logger.Error().Err(err).Str("profileID", profile.ID).Msg("Failed to get rules count")
-			continue
-		}
-		totalRules += len(rules)
-	}
-	stats.TotalRules = totalRules
+	// Note: Device/profile/rule counts removed - config now in OPA policies
 
 	// Get today's start time
 	now := time.Now()
@@ -213,7 +177,16 @@ func (v *StatsViews) GetDashboardStats(ctx *gin.Context) {
 }
 
 // GetDeviceStats returns per-device statistics.
+// Note: Device stats removed - device config now in OPA policies
 func (v *StatsViews) GetDeviceStats(ctx *gin.Context) {
+	// Return empty stats - device config is now in OPA policies
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Device stats unavailable - device configuration moved to OPA policies",
+		"devices": []interface{}{},
+	})
+	return
+
+	/* Removed device query code
 	devices, err := v.deviceStore.List(ctx.Request.Context())
 	if err != nil {
 		v.logger.Error().Err(err).Msg("Failed to list devices")
@@ -269,6 +242,7 @@ func (v *StatsViews) GetDeviceStats(ctx *gin.Context) {
 		"device_stats": stats,
 		"count":        len(stats),
 	})
+	*/
 }
 
 // GetTopDomains returns the most accessed domains.
