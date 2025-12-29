@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/metrics"
-	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
