@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -20,7 +18,6 @@ type Config struct {
 	Policy   PolicyConfig   `mapstructure:"policy"`
 	Usage    UsageConfig    `mapstructure:"usage_tracking"`
 	Response ResponseConfig `mapstructure:"response_modification"`
-	Admin    AdminConfig    `mapstructure:"admin"`
 }
 
 // ServerConfig defines server ports and addresses
@@ -30,8 +27,7 @@ type ServerConfig struct {
 	DNSEnableTCP bool   `mapstructure:"dns_enable_tcp"`
 	HTTPPort     int    `mapstructure:"http_port"`
 	HTTPSPort    int    `mapstructure:"https_port"`
-	AdminPort    int    `mapstructure:"admin_port"`
-	AdminDomain  string `mapstructure:"admin_domain"`
+	AdminDomain  string `mapstructure:"admin_domain"` // Domain for admin-related requests (kept for compatibility)
 	MetricsPort  int    `mapstructure:"metrics_port"`
 	BindAddress  string `mapstructure:"bind_address"`
 	ProxyIP      string `mapstructure:"proxy_ip"` // IP address returned in DNS intercept responses
@@ -78,28 +74,44 @@ type TLSConfig struct {
 
 // StorageConfig defines storage backend settings
 type StorageConfig struct {
-	Path string `mapstructure:"path"`
-	Type string `mapstructure:"type"`
+	Type  string      `mapstructure:"type"`
+	Redis RedisConfig `mapstructure:"redis"`
+}
+
+// RedisConfig defines Redis connection settings
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+
+	// Connection pool
+	PoolSize     int `mapstructure:"pool_size"`
+	MinIdleConns int `mapstructure:"min_idle_conns"`
+
+	// Timeouts
+	DialTimeout  string `mapstructure:"dial_timeout"`
+	ReadTimeout  string `mapstructure:"read_timeout"`
+	WriteTimeout string `mapstructure:"write_timeout"`
 }
 
 // LoggingConfig defines logging behavior
 type LoggingConfig struct {
-	Level                   string `mapstructure:"level"`
-	Format                  string `mapstructure:"format"`
-	RequestLogRetentionDays int    `mapstructure:"request_log_retention_days"`
+	Level  string `mapstructure:"level"`
+	Format string `mapstructure:"format"`
 }
 
 // PolicyConfig defines policy engine defaults
 type PolicyConfig struct {
-	DefaultAction    string   `mapstructure:"default_action"`
-	DefaultAllow     bool     `mapstructure:"default_allow"`
-	UseMACAddress    bool     `mapstructure:"use_mac_address"`
-	ARPCacheTTL      string   `mapstructure:"arp_cache_ttl"`
-	OPAPolicyDir     string   `mapstructure:"opa_policy_dir"`
-	OPAPolicySource  string   `mapstructure:"opa_policy_source"`  // "filesystem" or "remote"
-	OPAPolicyURLs    []string `mapstructure:"opa_policy_urls"`    // URLs for remote policies
-	OPAHTTPTimeout   string   `mapstructure:"opa_http_timeout"`   // Timeout for HTTP requests
-	OPAHTTPRetries   int      `mapstructure:"opa_http_retries"`   // Number of retries
+	DefaultAction   string   `mapstructure:"default_action"`
+	DefaultAllow    bool     `mapstructure:"default_allow"`
+	UseMACAddress   bool     `mapstructure:"use_mac_address"`
+	ARPCacheTTL     string   `mapstructure:"arp_cache_ttl"`
+	OPAPolicyDir    string   `mapstructure:"opa_policy_dir"`
+	OPAPolicySource string   `mapstructure:"opa_policy_source"` // "filesystem" or "remote"
+	OPAPolicyURLs   []string `mapstructure:"opa_policy_urls"`   // URLs for remote policies
+	OPAHTTPTimeout  string   `mapstructure:"opa_http_timeout"`  // Timeout for HTTP requests
+	OPAHTTPRetries  int      `mapstructure:"opa_http_retries"`  // Number of retries
 }
 
 // UsageConfig defines usage tracking settings
@@ -114,19 +126,6 @@ type ResponseConfig struct {
 	Enabled             bool     `mapstructure:"enabled"`
 	DisabledHosts       []string `mapstructure:"disabled_hosts"`
 	AllowedContentTypes []string `mapstructure:"allowed_content_types"`
-}
-
-// AdminConfig defines admin interface settings
-type AdminConfig struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	Port            int    `mapstructure:"port"`
-	BindAddress     string `mapstructure:"bind_address"`
-	InitialUsername string `mapstructure:"initial_username"`
-	InitialPassword string `mapstructure:"initial_password"`
-	JWTSecret       string `mapstructure:"jwt_secret"`
-	SessionTimeout  string `mapstructure:"session_timeout"`
-	RateLimit       int    `mapstructure:"rate_limit"`
-	RateLimitWindow string `mapstructure:"rate_limit_window"`
 }
 
 // Load loads configuration from file and environment variables
@@ -172,7 +171,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.dns_enable_tcp", true)
 	v.SetDefault("server.http_port", 80)
 	v.SetDefault("server.https_port", 443)
-	v.SetDefault("server.admin_port", 8443)
 	v.SetDefault("server.admin_domain", "kproxy.home.local")
 	v.SetDefault("server.metrics_port", 9090)
 	v.SetDefault("server.bind_address", "0.0.0.0")
@@ -208,13 +206,20 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tls.cert_validity", "24h")
 
 	// Storage defaults
-	v.SetDefault("storage.path", "/var/lib/kproxy/kproxy.bolt")
-	v.SetDefault("storage.type", "bolt")
+	v.SetDefault("storage.type", "redis")
+	v.SetDefault("storage.redis.host", "localhost")
+	v.SetDefault("storage.redis.port", 6379)
+	v.SetDefault("storage.redis.password", "")
+	v.SetDefault("storage.redis.db", 0)
+	v.SetDefault("storage.redis.pool_size", 10)
+	v.SetDefault("storage.redis.min_idle_conns", 5)
+	v.SetDefault("storage.redis.dial_timeout", "5s")
+	v.SetDefault("storage.redis.read_timeout", "3s")
+	v.SetDefault("storage.redis.write_timeout", "3s")
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "json")
-	v.SetDefault("logging.request_log_retention_days", 30)
 
 	// Policy defaults
 	v.SetDefault("policy.default_action", "block")
@@ -236,12 +241,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("response_modification.enabled", true)
 	v.SetDefault("response_modification.disabled_hosts", []string{"*.bank.com", "secure.*"})
 	v.SetDefault("response_modification.allowed_content_types", []string{"text/html"})
-
-	// Admin defaults
-	v.SetDefault("admin.initial_username", "admin")
-	v.SetDefault("admin.initial_password", "changeme")
-	v.SetDefault("admin.session_timeout", "24h")
-	v.SetDefault("admin.rate_limit", 100)
 }
 
 // validate validates the configuration
@@ -262,19 +261,21 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("at least one upstream DNS server is required")
 	}
 
-	// Validate storage path
-	if cfg.Storage.Path == "" {
-		return fmt.Errorf("storage path is required")
-	}
-
+	// Validate storage configuration (Redis only)
 	if cfg.Storage.Type == "" {
-		cfg.Storage.Type = "bolt"
+		cfg.Storage.Type = "redis"
 	}
 
-	// Ensure storage directory exists
-	storageDir := filepath.Dir(cfg.Storage.Path)
-	if err := os.MkdirAll(storageDir, 0755); err != nil {
-		return fmt.Errorf("failed to create storage directory: %w", err)
+	if cfg.Storage.Type != "redis" {
+		return fmt.Errorf("unsupported storage type: %s (only redis is supported)", cfg.Storage.Type)
+	}
+
+	// Validate Redis configuration
+	if cfg.Storage.Redis.Host == "" {
+		return fmt.Errorf("redis host is required")
+	}
+	if cfg.Storage.Redis.Port == 0 {
+		return fmt.Errorf("redis port is required")
 	}
 
 	return nil

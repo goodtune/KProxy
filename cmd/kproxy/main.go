@@ -20,7 +20,6 @@ package main
 // @description Type "Bearer" followed by a space and the JWT token
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -29,7 +28,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/goodtune/kproxy/internal/admin"
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/config"
 	"github.com/goodtune/kproxy/internal/dhcp"
@@ -39,7 +37,7 @@ import (
 	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/proxy"
 	"github.com/goodtune/kproxy/internal/storage"
-	"github.com/goodtune/kproxy/internal/storage/bolt"
+	"github.com/goodtune/kproxy/internal/storage/redis"
 	"github.com/goodtune/kproxy/internal/usage"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -86,7 +84,11 @@ func main() {
 		}
 	}()
 
-	logger.Info().Str("path", cfg.Storage.Path).Str("type", cfg.Storage.Type).Msg("Storage initialized")
+	logger.Info().
+		Str("type", cfg.Storage.Type).
+		Str("redis_host", cfg.Storage.Redis.Host).
+		Int("redis_port", cfg.Storage.Redis.Port).
+		Msg("Storage initialized")
 
 	// Initialize Certificate Authority
 	caConfig := ca.Config{
@@ -183,7 +185,7 @@ func main() {
 		Timeout:      parseDuration(cfg.DNS.UpstreamTimeout, 5*time.Second),
 	}
 
-	dnsServer, err := dns.NewServer(dnsConfig, policyEngine, store.Logs(), logger)
+	dnsServer, err := dns.NewServer(dnsConfig, policyEngine, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize DNS Server")
 	}
@@ -273,7 +275,6 @@ func main() {
 		proxyConfig,
 		policyEngine,
 		certificateAuthority,
-		store.Logs(),
 		logger,
 	)
 
@@ -298,50 +299,12 @@ func main() {
 		Str("addr", metricsAddr).
 		Msg("Metrics Server started")
 
-	// Initialize Admin Server (if enabled)
-	var adminServer *admin.GorfServer
-	if cfg.Admin.Enabled {
-		// Ensure initial admin user exists
-		if err := admin.EnsureInitialAdminUser(
-			context.Background(),
-			store.AdminUsers(),
-			cfg.Admin.InitialUsername,
-			cfg.Admin.InitialPassword,
-			logger,
-		); err != nil {
-			logger.Fatal().Err(err).Msg("Failed to create initial admin user")
-		}
-
-		// Create admin server
-		adminConfig := admin.Config{
-			ListenAddr:      fmt.Sprintf("%s:%d", cfg.Admin.BindAddress, cfg.Admin.Port),
-			ServerName:      cfg.Server.AdminDomain,
-			JWTSecret:       cfg.Admin.JWTSecret,
-			TokenExpiration: parseDuration(cfg.Admin.SessionTimeout, 24*time.Hour),
-			RateLimit:       cfg.Admin.RateLimit,
-			RateLimitWindow: parseDuration(cfg.Admin.RateLimitWindow, time.Minute),
-		}
-
-		adminServer = admin.NewGorfServer(adminConfig, store, policyEngine, usageTracker, certificateAuthority, logger)
-
-		if err := adminServer.Start(); err != nil {
-			logger.Fatal().Err(err).Msg("Failed to start Admin Server")
-		}
-
-		logger.Info().
-			Str("addr", adminConfig.ListenAddr).
-			Msg("Admin Server started (gorf/Gin)")
-	}
-
 	// Log startup complete
 	logger.Info().Msg("KProxy startup complete")
 	logger.Info().Msgf("DNS Server: %s:%d", cfg.Server.BindAddress, cfg.Server.DNSPort)
 	logger.Info().Msgf("HTTP Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort)
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)
-	if cfg.Admin.Enabled {
-		logger.Info().Msgf("Admin Interface: https://%s:%d/admin/login", cfg.Admin.BindAddress, cfg.Admin.Port)
-	}
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
@@ -372,26 +335,20 @@ func main() {
 		logger.Error().Err(err).Msg("Error stopping Metrics Server")
 	}
 
-	if adminServer != nil {
-		if err := adminServer.Stop(); err != nil {
-			logger.Error().Err(err).Msg("Error stopping Admin Server")
-		}
-	}
-
 	logger.Info().Msg("KProxy stopped")
 }
 
 func openStorage(cfg config.StorageConfig) (storage.Store, error) {
 	storageType := cfg.Type
 	if storageType == "" {
-		storageType = "bolt"
+		storageType = "redis"
 	}
 
 	switch storageType {
-	case "bolt", "bbolt":
-		return bolt.Open(cfg.Path)
+	case "redis":
+		return redis.Open(cfg.Redis)
 	default:
-		return nil, fmt.Errorf("unsupported storage type: %s", storageType)
+		return nil, fmt.Errorf("unsupported storage type: %s (only 'redis' is supported)", storageType)
 	}
 }
 

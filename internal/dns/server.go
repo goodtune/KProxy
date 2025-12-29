@@ -1,7 +1,6 @@
 package dns
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
-	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/miekg/dns"
 	"github.com/rs/zerolog"
 )
@@ -20,7 +18,6 @@ type Server struct {
 	upstreamDNS  []string
 	policyEngine *policy.Engine
 	logger       zerolog.Logger
-	logStore     storage.LogStore
 
 	// TTL settings
 	interceptTTL uint32
@@ -49,7 +46,7 @@ type Config struct {
 }
 
 // NewServer creates a new DNS server
-func NewServer(config Config, policy *policy.Engine, logStore storage.LogStore, logger zerolog.Logger) (*Server, error) {
+func NewServer(config Config, policy *policy.Engine, logger zerolog.Logger) (*Server, error) {
 	// ProxyIP is optional - if not set, we'll auto-detect from incoming connections
 	var proxyIP net.IP
 	if config.ProxyIP != "" {
@@ -63,7 +60,6 @@ func NewServer(config Config, policy *policy.Engine, logStore storage.LogStore, 
 		proxyIP:      proxyIP,
 		upstreamDNS:  config.UpstreamDNS,
 		policyEngine: policy,
-		logStore:     logStore,
 		logger:       logger.With().Str("component", "dns").Logger(),
 		interceptTTL: config.InterceptTTL,
 		bypassTTLCap: config.BypassTTLCap,
@@ -222,11 +218,17 @@ func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			logAction = "BLOCK"
 		}
 
-		// Log the DNS query
+		// Log the DNS query to structured logger
 		latency := time.Since(startTime).Milliseconds()
-		if err := s.logDNS(clientIP, domain, dns.TypeToString[qtype], logAction, responseIP, upstream, latency); err != nil {
-			s.logger.Error().Err(err).Msg("Failed to log DNS query")
-		}
+		s.logger.Info().
+			Str("client_ip", clientIP.String()).
+			Str("domain", domain).
+			Str("query_type", dns.TypeToString[qtype]).
+			Str("action", logAction).
+			Str("response_ip", responseIP).
+			Str("upstream", upstream).
+			Int64("latency_ms", latency).
+			Msg("DNS query processed")
 
 		// Record metrics
 		// Device identification now happens in OPA; use client IP for metrics
@@ -324,24 +326,4 @@ func (s *Server) getResponseIP(answer dns.RR) string {
 		return aaaa.AAAA.String()
 	}
 	return ""
-}
-
-// logDNS logs a DNS query to storage
-func (s *Server) logDNS(clientIP net.IP, domain, queryType, action, responseIP, upstream string, latencyMS int64) error {
-	// Device identification now happens in OPA
-	// Use client IP as device identifier for logging
-	deviceID := clientIP.String()
-	deviceName := clientIP.String()
-
-	return s.logStore.AddDNSLog(context.Background(), storage.DNSLog{
-		DeviceID:   deviceID,
-		DeviceName: deviceName,
-		ClientIP:   clientIP.String(),
-		Domain:     domain,
-		QueryType:  queryType,
-		Action:     action,
-		ResponseIP: responseIP,
-		Upstream:   upstream,
-		LatencyMS:  latencyMS,
-	})
 }

@@ -19,11 +19,11 @@ type UsageTracker interface {
 
 // Engine handles policy evaluation by gathering facts and calling OPA
 type Engine struct {
-	usageStore    storage.UsageStore
-	usageTracker  UsageTracker
-	opaEngine     *opa.Engine
-	clock         Clock
-	logger        zerolog.Logger
+	usageStore   storage.UsageStore
+	usageTracker UsageTracker
+	opaEngine    *opa.Engine
+	clock        Clock
+	logger       zerolog.Logger
 }
 
 // NewEngine creates a new fact-based policy engine

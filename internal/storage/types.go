@@ -44,6 +44,8 @@ func (a Action) MarshalJSON() ([]byte, error) {
 // REMOVED: Device, Profile, Rule, TimeRule, UsageLimit, BypassRule
 // These types are no longer stored in database
 // Configuration is now defined in OPA policies (policies/config.rego)
+// REMOVED: RequestLog, DNSLog, AdminUser
+// Logs now written to structured loggers, admin UI removed
 
 // UsageSession represents a tracked usage session.
 type UsageSession struct {
@@ -62,52 +64,6 @@ type DailyUsage struct {
 	DeviceID     string `json:"device_id"`
 	LimitID      string `json:"limit_id"`
 	TotalSeconds int64  `json:"total_seconds"`
-}
-
-// RequestLog represents an HTTP request log entry.
-type RequestLog struct {
-	ID           string    `json:"id"`
-	Timestamp    time.Time `json:"timestamp"`
-	DeviceID     string    `json:"device_id"`
-	DeviceName   string    `json:"device_name"`
-	ClientIP     string    `json:"client_ip"`
-	Method       string    `json:"method"`
-	Host         string    `json:"host"`
-	Path         string    `json:"path"`
-	UserAgent    string    `json:"user_agent"`
-	StatusCode   int       `json:"status_code"`
-	ResponseSize int64     `json:"response_size"`
-	DurationMS   int64     `json:"duration_ms"`
-	Action       Action    `json:"action"`
-	MatchedRule  string    `json:"matched_rule_id"`
-	Reason       string    `json:"reason"`
-	Category     string    `json:"category"`
-	Encrypted    bool      `json:"encrypted"`
-}
-
-// DNSLog represents a DNS query log entry.
-type DNSLog struct {
-	ID         string    `json:"id"`
-	Timestamp  time.Time `json:"timestamp"`
-	ClientIP   string    `json:"client_ip"`
-	DeviceID   string    `json:"device_id"`
-	DeviceName string    `json:"device_name"`
-	Domain     string    `json:"domain"`
-	QueryType  string    `json:"query_type"`
-	Action     string    `json:"action"`
-	ResponseIP string    `json:"response_ip"`
-	Upstream   string    `json:"upstream"`
-	LatencyMS  int64     `json:"latency_ms"`
-}
-
-// AdminUser represents an admin user for the web interface.
-type AdminUser struct {
-	ID           string     `json:"id"`
-	Username     string     `json:"username"`
-	PasswordHash string     `json:"password_hash"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	LastLogin    *time.Time `json:"last_login,omitempty"`
 }
 
 // DHCPLease represents a DHCP IP address lease.

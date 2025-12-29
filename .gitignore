@@ -5,8 +5,7 @@ bin/
 *.dll
 *.so
 *.dylib
-/kproxy
-kproxy.exe
+dist/
 
 # Test binary, built with `go test -c`
 *.test
@@ -49,5 +48,5 @@ Thumbs.db
 # Config files with sensitive data
 config.local.yaml
 
-# React UI build artifacts (copied during build)
-web/admin-ui/
+# Local development config file
+config.dev.yaml
