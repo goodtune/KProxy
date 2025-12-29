@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	DNS      DNSConfig      `mapstructure:"dns"`
+	DHCP     DHCPConfig     `mapstructure:"dhcp"`
 	TLS      TLSConfig      `mapstructure:"tls"`
 	Storage  StorageConfig  `mapstructure:"storage"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
@@ -46,6 +47,24 @@ type DNSConfig struct {
 	GlobalBypass    []string `mapstructure:"global_bypass"`
 }
 
+// DHCPConfig defines DHCP server settings
+type DHCPConfig struct {
+	Enabled        bool     `mapstructure:"enabled"`
+	Port           int      `mapstructure:"port"`
+	BindAddress    string   `mapstructure:"bind_address"`
+	ServerIP       string   `mapstructure:"server_ip"`        // DHCP server identifier
+	SubnetMask     string   `mapstructure:"subnet_mask"`      // Network mask
+	Gateway        string   `mapstructure:"gateway"`          // Default gateway
+	DNSServers     []string `mapstructure:"dns_servers"`      // DNS servers to advertise
+	LeaseTime      string   `mapstructure:"lease_time"`       // Default lease duration
+	RangeStart     string   `mapstructure:"range_start"`      // Start of IP pool
+	RangeEnd       string   `mapstructure:"range_end"`        // End of IP pool
+	BootFileName   string   `mapstructure:"boot_filename"`    // TFTP boot filename (e.g., "pxelinux.0")
+	BootServerName string   `mapstructure:"boot_server_name"` // Boot server hostname
+	TFTPIP         string   `mapstructure:"tftp_ip"`          // TFTP server IP
+	BootURI        string   `mapstructure:"boot_uri"`         // HTTP boot URI (UEFI HTTP boot)
+}
+
 // TLSConfig defines certificate authority settings
 type TLSConfig struct {
 	CACert           string `mapstructure:"ca_cert"`
@@ -72,10 +91,15 @@ type LoggingConfig struct {
 
 // PolicyConfig defines policy engine defaults
 type PolicyConfig struct {
-	DefaultAction string `mapstructure:"default_action"`
-	DefaultAllow  bool   `mapstructure:"default_allow"`
-	UseMACAddress bool   `mapstructure:"use_mac_address"`
-	ARPCacheTTL   string `mapstructure:"arp_cache_ttl"`
+	DefaultAction    string   `mapstructure:"default_action"`
+	DefaultAllow     bool     `mapstructure:"default_allow"`
+	UseMACAddress    bool     `mapstructure:"use_mac_address"`
+	ARPCacheTTL      string   `mapstructure:"arp_cache_ttl"`
+	OPAPolicyDir     string   `mapstructure:"opa_policy_dir"`
+	OPAPolicySource  string   `mapstructure:"opa_policy_source"`  // "filesystem" or "remote"
+	OPAPolicyURLs    []string `mapstructure:"opa_policy_urls"`    // URLs for remote policies
+	OPAHTTPTimeout   string   `mapstructure:"opa_http_timeout"`   // Timeout for HTTP requests
+	OPAHTTPRetries   int      `mapstructure:"opa_http_retries"`   // Number of retries
 }
 
 // UsageConfig defines usage tracking settings
@@ -167,6 +191,13 @@ func setDefaults(v *viper.Viper) {
 		"time.*.gov",
 	})
 
+	// DHCP defaults
+	v.SetDefault("dhcp.enabled", false)
+	v.SetDefault("dhcp.port", 67)
+	v.SetDefault("dhcp.bind_address", "0.0.0.0")
+	v.SetDefault("dhcp.lease_time", "24h")
+	v.SetDefault("dhcp.dns_servers", []string{})
+
 	// TLS defaults
 	v.SetDefault("tls.ca_cert", "/etc/kproxy/ca/root-ca.crt")
 	v.SetDefault("tls.ca_key", "/etc/kproxy/ca/root-ca.key")
@@ -190,6 +221,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("policy.default_allow", false)
 	v.SetDefault("policy.use_mac_address", true)
 	v.SetDefault("policy.arp_cache_ttl", "5m")
+	v.SetDefault("policy.opa_policy_dir", "/etc/kproxy/policies")
+	v.SetDefault("policy.opa_policy_source", "filesystem")
+	v.SetDefault("policy.opa_policy_urls", []string{})
+	v.SetDefault("policy.opa_http_timeout", "30s")
+	v.SetDefault("policy.opa_http_retries", 3)
 
 	// Usage tracking defaults
 	v.SetDefault("usage_tracking.inactivity_timeout", "2m")

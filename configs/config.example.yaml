@@ -42,6 +42,42 @@ dns:
     - "time.*.com"        # NTP-related
     - "time.*.gov"
 
+dhcp:
+  # Enable/disable DHCP server for netboot support
+  enabled: false
+
+  # DHCP server port and bind address
+  port: 67
+  bind_address: "0.0.0.0"
+
+  # DHCP server settings (auto-detected if not specified)
+  # server_ip: "192.168.1.1"       # DHCP server identifier (auto-detected from network interface)
+  # subnet_mask: "255.255.255.0"   # Network subnet mask (auto-detected from network interface)
+  # gateway: "192.168.1.1"         # Default gateway for clients (auto-detected, uses server IP)
+
+  # DNS servers to advertise to clients (empty = use server_ip as DNS)
+  dns_servers: []
+
+  # IP address pool for dynamic allocation (REQUIRED - must be configured manually)
+  range_start: "192.168.1.100"
+  range_end: "192.168.1.200"
+
+  # Lease duration
+  lease_time: "24h"
+
+  # PXE/Network boot settings (for diskless/kiosk systems)
+  # For BIOS PXE boot (legacy):
+  boot_filename: "pxelinux.0"               # TFTP boot file
+  boot_server_name: "kproxy.home.local"     # Boot server hostname
+  tftp_ip: "192.168.1.1"                    # TFTP server IP
+
+  # For UEFI HTTP boot (modern, recommended):
+  boot_uri: "http://boot.netboot.xyz/ipxe/netboot.xyz.efi"  # HTTP boot URI
+  # Examples:
+  #   - netboot.xyz: "http://boot.netboot.xyz/ipxe/netboot.xyz.efi"
+  #   - Custom iPXE: "http://192.168.1.1:8080/boot/ipxe.efi"
+  #   - Local image: "http://192.168.1.1:8080/boot/kiosk.iso"
+
 tls:
   # CA certificate and key paths
   ca_cert: "/etc/kproxy/ca/root-ca.crt"

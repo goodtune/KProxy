@@ -45,6 +45,10 @@ func (s *ruleStore) ListByProfile(ctx context.Context, profileID string) ([]stor
 	return rules, err
 }
 
+func (s *ruleStore) ListAll(ctx context.Context) ([]storage.Rule, error) {
+	return listBucket[storage.Rule](ctx, s.db, bucketRules)
+}
+
 func (s *ruleStore) Upsert(ctx context.Context, rule storage.Rule) error {
 	if rule.ProfileID == "" {
 		return fmt.Errorf("rule profile_id is required")

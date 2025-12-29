@@ -1,5 +1,24 @@
 package main
 
+// @title KProxy Admin API
+// @version 1.0
+// @description KProxy is a transparent HTTP/HTTPS interception proxy with embedded DNS server for home network parental controls.
+// @description It combines DNS-level routing decisions with proxy-level policy enforcement, dynamic TLS certificate generation, and usage tracking.
+
+// @contact.name KProxy Support
+// @contact.url https://github.com/goodtune/kproxy
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8443
+// @BasePath /api
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and the JWT token
+
 import (
 	"context"
 	"flag"
@@ -13,9 +32,11 @@ import (
 	"github.com/goodtune/kproxy/internal/admin"
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/config"
+	"github.com/goodtune/kproxy/internal/dhcp"
 	"github.com/goodtune/kproxy/internal/dns"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
+	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/proxy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/storage/bolt"
@@ -91,18 +112,30 @@ func main() {
 		defaultAction = "block"
 	}
 
+	// Build OPA configuration
+	opaConfig := opa.Config{
+		Source:      cfg.Policy.OPAPolicySource,
+		PolicyDir:   cfg.Policy.OPAPolicyDir,
+		PolicyURLs:  cfg.Policy.OPAPolicyURLs,
+		HTTPTimeout: parseDuration(cfg.Policy.OPAHTTPTimeout, 30*time.Second),
+		HTTPRetries: cfg.Policy.OPAHTTPRetries,
+	}
+
 	policyEngine, err := policy.NewEngine(
 		store,
 		cfg.DNS.GlobalBypass,
 		defaultAction,
 		cfg.Policy.UseMACAddress,
+		opaConfig,
 		logger,
 	)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize Policy Engine")
 	}
 
-	logger.Info().Msg("Policy Engine initialized")
+	logger.Info().
+		Str("opa_source", opaConfig.Source).
+		Msg("Policy Engine initialized")
 
 	// Initialize Usage Tracker
 	usageTracker := usage.NewTracker(
@@ -171,6 +204,72 @@ func main() {
 		Str("addr", dnsConfig.ListenAddr).
 		Msg("DNS Server started")
 
+	// Initialize DHCP Server (if enabled)
+	var dhcpServer *dhcp.Server
+	if cfg.DHCP.Enabled {
+		// Auto-detect network configuration if not provided
+		dhcpServerIP := cfg.DHCP.ServerIP
+		dhcpSubnetMask := cfg.DHCP.SubnetMask
+		dhcpGateway := cfg.DHCP.Gateway
+
+		if dhcpServerIP == "" || dhcpSubnetMask == "" || dhcpGateway == "" {
+			detectedIP, detectedSubnet, detectedGateway, err := detectNetworkConfig()
+			if err != nil {
+				logger.Warn().Err(err).Msg("Failed to auto-detect network configuration for DHCP")
+				if dhcpServerIP == "" || dhcpSubnetMask == "" || dhcpGateway == "" {
+					logger.Fatal().Msg("DHCP server requires server_ip, subnet_mask, and gateway. Auto-detection failed. Please configure manually.")
+				}
+			} else {
+				if dhcpServerIP == "" {
+					dhcpServerIP = detectedIP
+					logger.Info().Str("server_ip", dhcpServerIP).Msg("Auto-detected DHCP server IP")
+				}
+				if dhcpSubnetMask == "" {
+					dhcpSubnetMask = detectedSubnet
+					logger.Info().Str("subnet_mask", dhcpSubnetMask).Msg("Auto-detected subnet mask")
+				}
+				if dhcpGateway == "" {
+					dhcpGateway = detectedGateway
+					logger.Info().Str("gateway", dhcpGateway).Msg("Auto-detected gateway (using server IP)")
+				}
+			}
+		}
+
+		dhcpConfig := dhcp.Config{
+			Enabled:        cfg.DHCP.Enabled,
+			Port:           cfg.DHCP.Port,
+			BindAddress:    cfg.DHCP.BindAddress,
+			ServerIP:       dhcpServerIP,
+			SubnetMask:     dhcpSubnetMask,
+			Gateway:        dhcpGateway,
+			DNSServers:     cfg.DHCP.DNSServers,
+			LeaseTime:      parseDuration(cfg.DHCP.LeaseTime, 24*time.Hour),
+			RangeStart:     cfg.DHCP.RangeStart,
+			RangeEnd:       cfg.DHCP.RangeEnd,
+			BootFileName:   cfg.DHCP.BootFileName,
+			BootServerName: cfg.DHCP.BootServerName,
+			TFTPIP:         cfg.DHCP.TFTPIP,
+			BootURI:        cfg.DHCP.BootURI,
+		}
+
+		dhcpServer, err = dhcp.NewServer(dhcpConfig, policyEngine, store.DHCPLeases(), logger)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to initialize DHCP Server")
+		}
+
+		if err := dhcpServer.Start(); err != nil {
+			logger.Fatal().Err(err).Msg("Failed to start DHCP Server")
+		}
+
+		logger.Info().
+			Str("addr", fmt.Sprintf("%s:%d", cfg.DHCP.BindAddress, cfg.DHCP.Port)).
+			Str("server_ip", dhcpServerIP).
+			Str("subnet", dhcpSubnetMask).
+			Str("gateway", dhcpGateway).
+			Str("range", fmt.Sprintf("%s-%s", cfg.DHCP.RangeStart, cfg.DHCP.RangeEnd)).
+			Msg("DHCP Server started")
+	}
+
 	// Initialize Proxy Server
 	proxyConfig := proxy.Config{
 		HTTPAddr:    fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort),
@@ -208,7 +307,7 @@ func main() {
 		Msg("Metrics Server started")
 
 	// Initialize Admin Server (if enabled)
-	var adminServer *admin.Server
+	var adminServer *admin.GorfServer
 	if cfg.Admin.Enabled {
 		// Ensure initial admin user exists
 		if err := admin.EnsureInitialAdminUser(
@@ -231,7 +330,7 @@ func main() {
 			RateLimitWindow: parseDuration(cfg.Admin.RateLimitWindow, time.Minute),
 		}
 
-		adminServer = admin.NewServer(adminConfig, store, policyEngine, certificateAuthority, logger)
+		adminServer = admin.NewGorfServer(adminConfig, store, policyEngine, usageTracker, certificateAuthority, logger)
 
 		if err := adminServer.Start(); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to start Admin Server")
@@ -239,7 +338,7 @@ func main() {
 
 		logger.Info().
 			Str("addr", adminConfig.ListenAddr).
-			Msg("Admin Server started")
+			Msg("Admin Server started (gorf/Gin)")
 	}
 
 	// Log startup complete
@@ -265,6 +364,12 @@ func main() {
 
 	if err := dnsServer.Stop(); err != nil {
 		logger.Error().Err(err).Msg("Error stopping DNS Server")
+	}
+
+	if dhcpServer != nil {
+		if err := dhcpServer.Stop(); err != nil {
+			logger.Error().Err(err).Msg("Error stopping DHCP Server")
+		}
 	}
 
 	if err := proxyServer.Stop(); err != nil {
@@ -357,4 +462,41 @@ func detectServerIP() (string, error) {
 	}
 
 	return "", fmt.Errorf("no suitable IP address found")
+}
+
+// detectNetworkConfig attempts to detect network configuration (IP, subnet mask, gateway)
+func detectNetworkConfig() (ip, subnet, gateway string, err error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get interface addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		// Check if it's an IP network address
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			// Skip loopback addresses
+			if ipNet.IP.IsLoopback() {
+				continue
+			}
+			// Skip IPv6 for now (prefer IPv4)
+			if ipNet.IP.To4() == nil {
+				continue
+			}
+
+			// Found valid IPv4 address
+			ip = ipNet.IP.String()
+
+			// Get subnet mask
+			mask := ipNet.Mask
+			subnet = fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3])
+
+			// Gateway is typically the server IP itself (acting as router) or .1 of the subnet
+			// We'll use the server IP as default, which is common for router/gateway setups
+			gateway = ip
+
+			return ip, subnet, gateway, nil
+		}
+	}
+
+	return "", "", "", fmt.Errorf("no suitable network configuration found")
 }

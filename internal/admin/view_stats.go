@@ -1,98 +1,97 @@
-package api
+package admin
 
 import (
 	"net/http"
 	"sort"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
 
-// StatsHandler handles statistics-related API requests.
-type StatsHandler struct {
-	deviceStore storage.DeviceStore
+// StatsViews handles statistics-related API requests.
+type StatsViews struct {
+	deviceStore  storage.DeviceStore
 	profileStore storage.ProfileStore
-	ruleStore storage.RuleStore
-	logStore storage.LogStore
-	usageStore storage.UsageStore
-	logger zerolog.Logger
+	ruleStore    storage.RuleStore
+	logStore     storage.LogStore
+	usageStore   storage.UsageStore
+	logger       zerolog.Logger
 }
 
-// NewStatsHandler creates a new statistics handler.
-func NewStatsHandler(
+// NewStatsViews creates a new statistics views instance.
+func NewStatsViews(
 	deviceStore storage.DeviceStore,
 	profileStore storage.ProfileStore,
 	ruleStore storage.RuleStore,
 	logStore storage.LogStore,
 	usageStore storage.UsageStore,
 	logger zerolog.Logger,
-) *StatsHandler {
-	return &StatsHandler{
-		deviceStore: deviceStore,
+) *StatsViews {
+	return &StatsViews{
+		deviceStore:  deviceStore,
 		profileStore: profileStore,
-		ruleStore: ruleStore,
-		logStore: logStore,
-		usageStore: usageStore,
-		logger: logger.With().Str("handler", "stats").Logger(),
+		ruleStore:    ruleStore,
+		logStore:     logStore,
+		usageStore:   usageStore,
+		logger:       logger.With().Str("handler", "stats").Logger(),
 	}
 }
 
 // DashboardStats represents the statistics for the dashboard.
 type DashboardStats struct {
-	TotalDevices int `json:"total_devices"`
-	TotalProfiles int `json:"total_profiles"`
-	TotalRules int `json:"total_rules"`
-	RequestsToday int `json:"requests_today"`
-	ActiveSessions int `json:"active_sessions"`
-	BlockedToday int `json:"blocked_today"`
-	RecentBlocks []BlockInfo `json:"recent_blocks"`
-	TopBlockedDomains []DomainCount `json:"top_blocked_domains"`
-	RequestTimeline []TimelinePoint `json:"request_timeline"`
+	TotalDevices      int             `json:"total_devices"`
+	TotalProfiles     int             `json:"total_profiles"`
+	TotalRules        int             `json:"total_rules"`
+	RequestsToday     int             `json:"requests_today"`
+	ActiveSessions    int             `json:"active_sessions"`
+	BlockedToday      int             `json:"blocked_today"`
+	RecentBlocks      []BlockInfo     `json:"recent_blocks"`
+	TopBlockedDomains []DomainCount   `json:"top_blocked_domains"`
+	RequestTimeline   []TimelinePoint `json:"request_timeline"`
 }
 
 // BlockInfo represents a blocked request.
 type BlockInfo struct {
 	Timestamp time.Time `json:"timestamp"`
-	Device string `json:"device"`
-	Domain string `json:"domain"`
-	Reason string `json:"reason"`
+	Device    string    `json:"device"`
+	Domain    string    `json:"domain"`
+	Reason    string    `json:"reason"`
 }
 
 // DomainCount represents a domain with its count.
 type DomainCount struct {
 	Domain string `json:"domain"`
-	Count int `json:"count"`
+	Count  int    `json:"count"`
 }
 
 // TimelinePoint represents a point in the request timeline.
 type TimelinePoint struct {
-	Time string `json:"time"`
-	Count int `json:"count"`
+	Time  string `json:"time"`
+	Count int    `json:"count"`
 }
 
 // GetDashboardStats returns comprehensive dashboard statistics.
-func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func (v *StatsViews) GetDashboardStats(ctx *gin.Context) {
 	stats := DashboardStats{
-		RecentBlocks: []BlockInfo{},
+		RecentBlocks:      []BlockInfo{},
 		TopBlockedDomains: []DomainCount{},
-		RequestTimeline: []TimelinePoint{},
+		RequestTimeline:   []TimelinePoint{},
 	}
 
 	// Get total devices
-	devices, err := h.deviceStore.List(ctx)
+	devices, err := v.deviceStore.List(ctx.Request.Context())
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to get devices count")
+		v.logger.Error().Err(err).Msg("Failed to get devices count")
 	} else {
 		stats.TotalDevices = len(devices)
 	}
 
 	// Get total profiles
-	profiles, err := h.profileStore.List(ctx)
+	profiles, err := v.profileStore.List(ctx.Request.Context())
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to get profiles count")
+		v.logger.Error().Err(err).Msg("Failed to get profiles count")
 	} else {
 		stats.TotalProfiles = len(profiles)
 	}
@@ -100,9 +99,9 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 	// Get total rules (across all profiles)
 	totalRules := 0
 	for _, profile := range profiles {
-		rules, err := h.ruleStore.ListByProfile(ctx, profile.ID)
+		rules, err := v.ruleStore.ListByProfile(ctx.Request.Context(), profile.ID)
 		if err != nil {
-			h.logger.Error().Err(err).Str("profileID", profile.ID).Msg("Failed to get rules count")
+			v.logger.Error().Err(err).Str("profileID", profile.ID).Msg("Failed to get rules count")
 			continue
 		}
 		totalRules += len(rules)
@@ -114,9 +113,9 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	// Get active sessions
-	sessions, err := h.usageStore.ListActiveSessions(ctx)
+	sessions, err := v.usageStore.ListActiveSessions(ctx.Request.Context())
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to get active sessions")
+		v.logger.Error().Err(err).Msg("Failed to get active sessions")
 	} else {
 		stats.ActiveSessions = len(sessions)
 	}
@@ -124,11 +123,11 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 	// Query request logs for today
 	requestFilter := storage.RequestLogFilter{
 		StartTime: &todayStart,
-		Limit: 10000, // Get all today's requests
+		Limit:     10000, // Get all today's requests
 	}
-	requestLogs, err := h.logStore.QueryRequestLogs(ctx, requestFilter)
+	requestLogs, err := v.logStore.QueryRequestLogs(ctx.Request.Context(), requestFilter)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to query request logs")
+		v.logger.Error().Err(err).Msg("Failed to query request logs")
 	} else {
 		stats.RequestsToday = len(requestLogs)
 
@@ -156,9 +155,9 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 
 					recentBlocks = append(recentBlocks, BlockInfo{
 						Timestamp: log.Timestamp,
-						Device: deviceName,
-						Domain: log.Host,
-						Reason: reason,
+						Device:    deviceName,
+						Domain:    log.Host,
+						Reason:    reason,
 					})
 				}
 			}
@@ -170,7 +169,7 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 		// Get top blocked domains
 		type domainCountPair struct {
 			domain string
-			count int
+			count  int
 		}
 		var domainPairs []domainCountPair
 		for domain, count := range blockedDomains {
@@ -188,7 +187,7 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 		for i := 0; i < limit; i++ {
 			stats.TopBlockedDomains = append(stats.TopBlockedDomains, DomainCount{
 				Domain: domainPairs[i].domain,
-				Count: domainPairs[i].count,
+				Count:  domainPairs[i].count,
 			})
 		}
 
@@ -204,23 +203,24 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 			timeStr := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, now.Location()).
 				Format("15:04")
 			stats.RequestTimeline = append(stats.RequestTimeline, TimelinePoint{
-				Time: timeStr,
+				Time:  timeStr,
 				Count: hourCounts[hour],
 			})
 		}
 	}
 
-	writeJSON(w, http.StatusOK, stats)
+	ctx.JSON(http.StatusOK, stats)
 }
 
 // GetDeviceStats returns per-device statistics.
-func (h *StatsHandler) GetDeviceStats(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	devices, err := h.deviceStore.List(ctx)
+func (v *StatsViews) GetDeviceStats(ctx *gin.Context) {
+	devices, err := v.deviceStore.List(ctx.Request.Context())
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to list devices")
-		writeError(w, http.StatusInternalServerError, "Failed to retrieve device stats")
+		v.logger.Error().Err(err).Msg("Failed to list devices")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve device stats",
+		})
 		return
 	}
 
@@ -228,30 +228,30 @@ func (h *StatsHandler) GetDeviceStats(w http.ResponseWriter, r *http.Request) {
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	type DeviceStats struct {
-		DeviceID string `json:"device_id"`
-		DeviceName string `json:"device_name"`
-		RequestsToday int `json:"requests_today"`
-		BlockedToday int `json:"blocked_today"`
+		DeviceID      string `json:"device_id"`
+		DeviceName    string `json:"device_name"`
+		RequestsToday int    `json:"requests_today"`
+		BlockedToday  int    `json:"blocked_today"`
 	}
 
 	var stats []DeviceStats
 
 	for _, device := range devices {
 		deviceStats := DeviceStats{
-			DeviceID: device.ID,
+			DeviceID:   device.ID,
 			DeviceName: device.Name,
 		}
 
 		// Query logs for this device
 		filter := storage.RequestLogFilter{
-			DeviceID: device.ID,
+			DeviceID:  device.ID,
 			StartTime: &todayStart,
-			Limit: 10000,
+			Limit:     10000,
 		}
 
-		logs, err := h.logStore.QueryRequestLogs(ctx, filter)
+		logs, err := v.logStore.QueryRequestLogs(ctx.Request.Context(), filter)
 		if err != nil {
-			h.logger.Error().Err(err).Str("deviceID", device.ID).Msg("Failed to query device logs")
+			v.logger.Error().Err(err).Str("deviceID", device.ID).Msg("Failed to query device logs")
 			continue
 		}
 
@@ -265,28 +265,29 @@ func (h *StatsHandler) GetDeviceStats(w http.ResponseWriter, r *http.Request) {
 		stats = append(stats, deviceStats)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	ctx.JSON(http.StatusOK, gin.H{
 		"device_stats": stats,
-		"count": len(stats),
+		"count":        len(stats),
 	})
 }
 
 // GetTopDomains returns the most accessed domains.
-func (h *StatsHandler) GetTopDomains(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func (v *StatsViews) GetTopDomains(ctx *gin.Context) {
 	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	filter := storage.RequestLogFilter{
 		StartTime: &todayStart,
-		Limit: 10000,
+		Limit:     10000,
 	}
 
-	logs, err := h.logStore.QueryRequestLogs(ctx, filter)
+	logs, err := v.logStore.QueryRequestLogs(ctx.Request.Context(), filter)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to query request logs")
-		writeError(w, http.StatusInternalServerError, "Failed to retrieve top domains")
+		v.logger.Error().Err(err).Msg("Failed to query request logs")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve top domains",
+		})
 		return
 	}
 
@@ -297,7 +298,7 @@ func (h *StatsHandler) GetTopDomains(w http.ResponseWriter, r *http.Request) {
 
 	type domainPair struct {
 		domain string
-		count int
+		count  int
 	}
 	var pairs []domainPair
 	for domain, count := range domainCounts {
@@ -318,33 +319,34 @@ func (h *StatsHandler) GetTopDomains(w http.ResponseWriter, r *http.Request) {
 	for i := 0; i < limit; i++ {
 		topDomains = append(topDomains, DomainCount{
 			Domain: pairs[i].domain,
-			Count: pairs[i].count,
+			Count:  pairs[i].count,
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	ctx.JSON(http.StatusOK, gin.H{
 		"top_domains": topDomains,
-		"count": len(topDomains),
+		"count":       len(topDomains),
 	})
 }
 
 // GetBlockedStats returns statistics about blocked requests.
-func (h *StatsHandler) GetBlockedStats(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func (v *StatsViews) GetBlockedStats(ctx *gin.Context) {
 	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	filter := storage.RequestLogFilter{
-		Action: storage.ActionBlock,
+		Action:    storage.ActionBlock,
 		StartTime: &todayStart,
-		Limit: 10000,
+		Limit:     10000,
 	}
 
-	logs, err := h.logStore.QueryRequestLogs(ctx, filter)
+	logs, err := v.logStore.QueryRequestLogs(ctx.Request.Context(), filter)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to query blocked requests")
-		writeError(w, http.StatusInternalServerError, "Failed to retrieve blocked stats")
+		v.logger.Error().Err(err).Msg("Failed to query blocked requests")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve blocked stats",
+		})
 		return
 	}
 
@@ -359,14 +361,14 @@ func (h *StatsHandler) GetBlockedStats(w http.ResponseWriter, r *http.Request) {
 
 	type ReasonCount struct {
 		Reason string `json:"reason"`
-		Count int `json:"count"`
+		Count  int    `json:"count"`
 	}
 
 	var reasons []ReasonCount
 	for reason, count := range reasonCounts {
 		reasons = append(reasons, ReasonCount{
 			Reason: reason,
-			Count: count,
+			Count:  count,
 		})
 	}
 
@@ -374,8 +376,8 @@ func (h *StatsHandler) GetBlockedStats(w http.ResponseWriter, r *http.Request) {
 		return reasons[i].Count > reasons[j].Count
 	})
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	ctx.JSON(http.StatusOK, gin.H{
 		"blocked_reasons": reasons,
-		"total_blocked": len(logs),
+		"total_blocked":   len(logs),
 	})
 }

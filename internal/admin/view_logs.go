@@ -1,35 +1,33 @@
-package api
+package admin
 
 import (
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/goodtune/kproxy/internal/storage"
-	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
 )
 
-// LogsHandler handles log-related API requests.
-type LogsHandler struct {
+// LogsViews handles log-related API requests.
+type LogsViews struct {
 	logStore storage.LogStore
 	logger   zerolog.Logger
 }
 
-// NewLogsHandler creates a new logs handler.
-func NewLogsHandler(logStore storage.LogStore, logger zerolog.Logger) *LogsHandler {
-	return &LogsHandler{
+// NewLogsViews creates a new logs views instance.
+func NewLogsViews(logStore storage.LogStore, logger zerolog.Logger) *LogsViews {
+	return &LogsViews{
 		logStore: logStore,
 		logger:   logger.With().Str("handler", "logs").Logger(),
 	}
 }
 
 // QueryRequestLogs returns filtered request logs.
-func (h *LogsHandler) QueryRequestLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func (v *LogsViews) QueryRequestLogs(ctx *gin.Context) {
 	// Parse query parameters
-	query := r.URL.Query()
+	query := ctx.Request.URL.Query()
 	filter := storage.RequestLogFilter{
 		DeviceID: query.Get("device_id"),
 		Domain:   query.Get("domain"),
@@ -68,25 +66,26 @@ func (h *LogsHandler) QueryRequestLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := h.logStore.QueryRequestLogs(ctx, filter)
+	logs, err := v.logStore.QueryRequestLogs(ctx.Request.Context(), filter)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to query request logs")
-		writeError(w, http.StatusInternalServerError, "Failed to retrieve logs")
+		v.logger.Error().Err(err).Msg("Failed to query request logs")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve logs",
+		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	ctx.JSON(http.StatusOK, gin.H{
 		"logs":  logs,
 		"count": len(logs),
 	})
 }
 
 // QueryDNSLogs returns filtered DNS logs.
-func (h *LogsHandler) QueryDNSLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
+func (v *LogsViews) QueryDNSLogs(ctx *gin.Context) {
 	// Parse query parameters
-	query := r.URL.Query()
+	query := ctx.Request.URL.Query()
 	filter := storage.DNSLogFilter{
 		DeviceID: query.Get("device_id"),
 		Domain:   query.Get("domain"),
@@ -121,68 +120,79 @@ func (h *LogsHandler) QueryDNSLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := h.logStore.QueryDNSLogs(ctx, filter)
+	logs, err := v.logStore.QueryDNSLogs(ctx.Request.Context(), filter)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to query DNS logs")
-		writeError(w, http.StatusInternalServerError, "Failed to retrieve logs")
+		v.logger.Error().Err(err).Msg("Failed to query DNS logs")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to retrieve logs",
+		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	ctx.JSON(http.StatusOK, gin.H{
 		"logs":  logs,
 		"count": len(logs),
 	})
 }
 
 // DeleteOldRequestLogs deletes request logs older than specified time.
-func (h *LogsHandler) DeleteOldRequestLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-	daysStr := vars["days"]
+func (v *LogsViews) DeleteOldRequestLogs(ctx *gin.Context) {
+	daysStr := ctx.Param("days")
 
 	days, err := strconv.Atoi(daysStr)
 	if err != nil || days < 1 {
-		writeError(w, http.StatusBadRequest, "Invalid days parameter")
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid days parameter",
+		})
 		return
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -days)
-	deleted, err := h.logStore.DeleteRequestLogsBefore(ctx, cutoff)
+	deleted, err := v.logStore.DeleteRequestLogsBefore(ctx.Request.Context(), cutoff)
 	if err != nil {
-		h.logger.Error().Err(err).Int("days", days).Msg("Failed to delete request logs")
-		writeError(w, http.StatusInternalServerError, "Failed to delete logs")
+		v.logger.Error().Err(err).Int("days", days).Msg("Failed to delete request logs")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to delete logs",
+		})
 		return
 	}
 
-	h.logger.Info().Int("deleted", deleted).Int("days", days).Msg("Deleted old request logs")
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	v.logger.Info().Int("deleted", deleted).Int("days", days).Msg("Deleted old request logs")
+	ctx.JSON(http.StatusOK, gin.H{
 		"deleted": deleted,
 		"message": "Old request logs deleted successfully",
 	})
 }
 
 // DeleteOldDNSLogs deletes DNS logs older than specified time.
-func (h *LogsHandler) DeleteOldDNSLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-	daysStr := vars["days"]
+func (v *LogsViews) DeleteOldDNSLogs(ctx *gin.Context) {
+	daysStr := ctx.Param("days")
 
 	days, err := strconv.Atoi(daysStr)
 	if err != nil || days < 1 {
-		writeError(w, http.StatusBadRequest, "Invalid days parameter")
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad_request",
+			"message": "Invalid days parameter",
+		})
 		return
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -days)
-	deleted, err := h.logStore.DeleteDNSLogsBefore(ctx, cutoff)
+	deleted, err := v.logStore.DeleteDNSLogsBefore(ctx.Request.Context(), cutoff)
 	if err != nil {
-		h.logger.Error().Err(err).Int("days", days).Msg("Failed to delete DNS logs")
-		writeError(w, http.StatusInternalServerError, "Failed to delete logs")
+		v.logger.Error().Err(err).Int("days", days).Msg("Failed to delete DNS logs")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "server_error",
+			"message": "Failed to delete logs",
+		})
 		return
 	}
 
-	h.logger.Info().Int("deleted", deleted).Int("days", days).Msg("Deleted old DNS logs")
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	v.logger.Info().Int("deleted", deleted).Int("days", days).Msg("Deleted old DNS logs")
+	ctx.JSON(http.StatusOK, gin.H{
 		"deleted": deleted,
 		"message": "Old DNS logs deleted successfully",
 	})

@@ -100,6 +100,22 @@ var (
 			Help: "Number of active connections",
 		},
 	)
+
+	// DHCP metrics
+	DHCPRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_dhcp_requests_total",
+			Help: "Total DHCP requests received",
+		},
+		[]string{"type"},
+	)
+
+	DHCPLeasesActive = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "kproxy_dhcp_leases_active",
+			Help: "Number of active DHCP leases",
+		},
+	)
 )
 
 func init() {
@@ -116,6 +132,8 @@ func init() {
 		BlockedRequests,
 		UsageMinutesConsumed,
 		ActiveConnections,
+		DHCPRequestsTotal,
+		DHCPLeasesActive,
 	)
 }
 
