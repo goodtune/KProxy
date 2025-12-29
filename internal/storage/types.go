@@ -41,69 +41,9 @@ func (a Action) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(a))
 }
 
-// Device represents a monitored device.
-type Device struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Identifiers []string  `json:"identifiers"`
-	ProfileID   string    `json:"profile_id"`
-	Active      bool      `json:"active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
-
-// Profile contains access rules for a device or group.
-type Profile struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	DefaultAllow bool      `json:"default_allow"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-}
-
-// Rule defines domain/path filtering.
-type Rule struct {
-	ID          string   `json:"id"`
-	ProfileID   string   `json:"profile_id"`
-	Domain      string   `json:"domain"`
-	Paths       []string `json:"paths"`
-	Action      Action   `json:"action"`
-	Priority    int      `json:"priority"`
-	Category    string   `json:"category"`
-	InjectTimer bool     `json:"inject_timer"`
-}
-
-// TimeRule restricts access by time of day.
-type TimeRule struct {
-	ID         string   `json:"id"`
-	ProfileID  string   `json:"profile_id"`
-	DaysOfWeek []int    `json:"days_of_week"`
-	StartTime  string   `json:"start_time"`
-	EndTime    string   `json:"end_time"`
-	RuleIDs    []string `json:"rule_ids"`
-}
-
-// UsageLimit tracks time spent on specific categories/domains.
-type UsageLimit struct {
-	ID           string   `json:"id"`
-	ProfileID    string   `json:"profile_id"`
-	Category     string   `json:"category"`
-	Domains      []string `json:"domains"`
-	DailyMinutes int      `json:"daily_minutes"`
-	ResetTime    string   `json:"reset_time"`
-	InjectTimer  bool     `json:"inject_timer"`
-}
-
-// BypassRule defines domains that should bypass the proxy.
-type BypassRule struct {
-	ID        string    `json:"id"`
-	Domain    string    `json:"domain"`
-	Reason    string    `json:"reason"`
-	Enabled   bool      `json:"enabled"`
-	DeviceIDs []string  `json:"device_ids"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
+// REMOVED: Device, Profile, Rule, TimeRule, UsageLimit, BypassRule
+// These types are no longer stored in database
+// Configuration is now defined in OPA policies (policies/config.rego)
 
 // UsageSession represents a tracked usage session.
 type UsageSession struct {

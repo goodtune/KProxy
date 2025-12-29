@@ -199,6 +199,14 @@ func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Durati
 	return stats, nil
 }
 
+// GetCategoryUsage returns the total usage for a category today (category = limitID)
+// This is a simplified version that assumes daily reset at midnight
+func (t *Tracker) GetCategoryUsage(deviceID, category string) (time.Duration, error) {
+	// Use midnight as reset time (simplified)
+	resetTime := time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC)
+	return t.GetTodayUsage(deviceID, category, resetTime)
+}
+
 // StopSession manually stops a session
 func (t *Tracker) StopSession(sessionID string) error {
 	t.mu.Lock()

@@ -2,67 +2,94 @@ package kproxy.device
 
 import rego.v1
 
+import data.kproxy.config
 import data.kproxy.helpers
 
-# Device identification by IP, MAC, or CIDR
-# Input structure:
+# Device Identification from Facts
+# Identifies which device made the request based on client IP and MAC
+#
+# Input structure (facts only):
 # {
 #   "client_ip": "192.168.1.100",
-#   "client_mac": "aa:bb:cc:dd:ee:ff",  // optional
-#   "devices": {
-#     "device-1": {
-#       "id": "device-1",
-#       "name": "Child iPad",
-#       "identifiers": ["192.168.1.100", "aa:bb:cc:dd:ee:ff"],
-#       "profile_id": "profile-1",
-#       "active": true
-#     }
-#   },
-#   "use_mac_address": true
+#   "client_mac": "aa:bb:cc:dd:ee:ff"  // optional, may be empty
 # }
+#
+# Device configuration comes from data.kproxy.config.devices
 
-# Primary identification result
+# Identify device by MAC address (highest priority, most reliable)
 identified_device := device if {
-	# Try MAC address first (most reliable)
-	input.use_mac_address
+	# MAC address provided
 	input.client_mac != ""
-	count(device_by_mac) > 0
-	some device in device_by_mac
-}
 
-identified_device := device if {
-	# Fall back to IP/CIDR matching
-	count(device_by_ip) > 0
-	some device in device_by_ip
-}
-
-# MAC address lookup
-device_by_mac contains device if {
-	some device_id, device in input.devices
-	device.active
+	# Find matching device in config
+	some device_id, device in config.devices
 	some identifier in device.identifiers
-	helpers.is_mac_address(identifier)
+	is_mac_address(identifier)
 	lower(identifier) == lower(input.client_mac)
 }
 
-# IP address lookup (exact or CIDR)
-device_by_ip contains device if {
-	some device_id, device in input.devices
-	device.active
-	some identifier in device.identifiers
+# Identify device by exact IP match (second priority)
+identified_device := device if {
+	# MAC not available or didn't match
+	not device_by_mac
 
-	# Exact IP match
-	not helpers.is_cidr(identifier)
-	not helpers.is_mac_address(identifier)
-	identifier == input.client_ip
+	# Find matching device by exact IP
+	some device_id, device in config.devices
+	some identifier in device.identifiers
+	is_ip_address(identifier)
+	input.client_ip == identifier
 }
 
-device_by_ip contains device if {
-	some device_id, device in input.devices
-	device.active
-	some identifier in device.identifiers
+# Identify device by CIDR range (third priority)
+identified_device := device if {
+	# MAC and exact IP didn't match
+	not device_by_mac
+	not device_by_exact_ip
 
-	# CIDR range match
-	helpers.is_cidr(identifier)
+	# Find matching device by CIDR
+	some device_id, device in config.devices
+	some identifier in device.identifiers
+	is_cidr(identifier)
 	helpers.ip_in_cidr(input.client_ip, identifier)
+}
+
+# Get the device ID (for logging/tracking)
+device_id := did if {
+	device := identified_device
+	some did, d in config.devices
+	d == device
+}
+
+# Helper: check if device was identified by MAC
+device_by_mac if {
+	input.client_mac != ""
+	some device_id, device in config.devices
+	some identifier in device.identifiers
+	is_mac_address(identifier)
+	lower(identifier) == lower(input.client_mac)
+}
+
+# Helper: check if device was identified by exact IP
+device_by_exact_ip if {
+	some device_id, device in config.devices
+	some identifier in device.identifiers
+	is_ip_address(identifier)
+	input.client_ip == identifier
+}
+
+# Helper: check if identifier is MAC address
+is_mac_address(id) if {
+	contains(id, ":")
+	count(split(id, ":")) == 6
+}
+
+# Helper: check if identifier is IP address (not MAC, not CIDR)
+is_ip_address(id) if {
+	not contains(id, ":")
+	not contains(id, "/")
+}
+
+# Helper: check if identifier is CIDR range
+is_cidr(id) if {
+	contains(id, "/")
 }

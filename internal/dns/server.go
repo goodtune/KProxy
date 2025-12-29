@@ -171,7 +171,8 @@ func (s *Server) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			Msg("DNS query received")
 
 		// Determine action based on policy
-		action := s.policyEngine.GetDNSAction(clientIP, domain)
+		// Note: DNS queries don't include MAC address, but we could look it up from DHCP leases in the future
+		action := s.policyEngine.GetDNSAction(clientIP, nil, domain)
 
 		var logAction string
 		var responseIP string

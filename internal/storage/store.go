@@ -10,70 +10,19 @@ import (
 var ErrNotFound = errors.New("storage: record not found")
 
 // Store represents the root storage interface.
+// Refactored to fact-based OPA: removed devices, profiles, rules, time_rules, usage_limits, bypass_rules
+// Configuration now lives in OPA policies, not database
 type Store interface {
 	Close() error
-	Devices() DeviceStore
-	Profiles() ProfileStore
-	Rules() RuleStore
-	TimeRules() TimeRuleStore
-	UsageLimits() UsageLimitStore
-	BypassRules() BypassRuleStore
 	Usage() UsageStore
 	Logs() LogStore
 	AdminUsers() AdminUserStore
 	DHCPLeases() DHCPLeaseStore
 }
 
-// DeviceStore manages device persistence.
-type DeviceStore interface {
-	Get(ctx context.Context, id string) (*Device, error)
-	List(ctx context.Context) ([]Device, error)
-	ListActive(ctx context.Context) ([]Device, error)
-	Upsert(ctx context.Context, device Device) error
-	Delete(ctx context.Context, id string) error
-}
-
-// ProfileStore manages profiles.
-type ProfileStore interface {
-	Get(ctx context.Context, id string) (*Profile, error)
-	List(ctx context.Context) ([]Profile, error)
-	Upsert(ctx context.Context, profile Profile) error
-	Delete(ctx context.Context, id string) error
-}
-
-// RuleStore manages domain rules.
-type RuleStore interface {
-	Get(ctx context.Context, profileID, id string) (*Rule, error)
-	ListByProfile(ctx context.Context, profileID string) ([]Rule, error)
-	ListAll(ctx context.Context) ([]Rule, error)
-	Upsert(ctx context.Context, rule Rule) error
-	Delete(ctx context.Context, profileID, id string) error
-}
-
-// TimeRuleStore manages time-based rules.
-type TimeRuleStore interface {
-	Get(ctx context.Context, profileID, id string) (*TimeRule, error)
-	ListByProfile(ctx context.Context, profileID string) ([]TimeRule, error)
-	Upsert(ctx context.Context, rule TimeRule) error
-	Delete(ctx context.Context, profileID, id string) error
-}
-
-// UsageLimitStore manages usage limits.
-type UsageLimitStore interface {
-	Get(ctx context.Context, profileID, id string) (*UsageLimit, error)
-	ListByProfile(ctx context.Context, profileID string) ([]UsageLimit, error)
-	Upsert(ctx context.Context, limit UsageLimit) error
-	Delete(ctx context.Context, profileID, id string) error
-}
-
-// BypassRuleStore manages bypass rules.
-type BypassRuleStore interface {
-	Get(ctx context.Context, id string) (*BypassRule, error)
-	List(ctx context.Context) ([]BypassRule, error)
-	ListEnabled(ctx context.Context) ([]BypassRule, error)
-	Upsert(ctx context.Context, rule BypassRule) error
-	Delete(ctx context.Context, id string) error
-}
+// REMOVED: DeviceStore, ProfileStore, RuleStore, TimeRuleStore, UsageLimitStore, BypassRuleStore
+// Configuration is now managed in OPA policies (policies/config.rego)
+// Not in database anymore
 
 // UsageStore manages usage tracking data.
 type UsageStore interface {
