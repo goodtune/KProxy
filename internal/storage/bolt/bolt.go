@@ -2,13 +2,9 @@ package bolt
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/goodtune/kproxy/internal/storage"
 	"go.etcd.io/bbolt"
@@ -17,18 +13,11 @@ import (
 const (
 	// Removed: bucketDevices, bucketProfiles, bucketRules, bucketTimeRules, bucketUsageLimits, bucketBypassRules
 	// Configuration now in OPA policies
-	bucketSessions    = "usage_sessions"
-	bucketDailyUsage  = "usage_daily"
-	bucketLogsHTTP    = "logs_http"
-	bucketLogsDNS     = "logs_dns"
-	bucketIndexes     = "indexes"
-	bucketIndexesHTTP = "http"
-	bucketIndexesDNS  = "dns"
-	bucketIndexDevice = "device"
-	bucketIndexAction = "action"
-	bucketIndexDomain = "domain"
-	bucketAdminUsers  = "admin_users"
-	bucketDHCPLeases  = "dhcp_leases"
+	// Removed: bucketLogsHTTP, bucketLogsDNS, bucketAdminUsers
+	// Logs written to structured loggers, admin UI removed
+	bucketSessions   = "usage_sessions"
+	bucketDailyUsage = "usage_daily"
+	bucketDHCPLeases = "dhcp_leases"
 )
 
 // Store implements the storage.Store interface using bbolt.
@@ -68,12 +57,10 @@ func (s *Store) ensureBuckets() error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		buckets := [][]byte{
 			// Removed config buckets: devices, profiles, rules, time_rules, usage_limits, bypass_rules
+			// Removed log buckets: logs_http, logs_dns
+			// Removed admin bucket: admin_users
 			[]byte(bucketSessions),
 			[]byte(bucketDailyUsage),
-			[]byte(bucketLogsHTTP),
-			[]byte(bucketLogsDNS),
-			[]byte(bucketIndexes),
-			[]byte(bucketAdminUsers),
 			[]byte(bucketDHCPLeases),
 		}
 
@@ -81,17 +68,6 @@ func (s *Store) ensureBuckets() error {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return fmt.Errorf("create bucket %s: %w", name, err)
 			}
-		}
-
-		indexes := tx.Bucket([]byte(bucketIndexes))
-		if indexes == nil {
-			return fmt.Errorf("indexes bucket missing")
-		}
-		if _, err := indexes.CreateBucketIfNotExists([]byte(bucketIndexesHTTP)); err != nil {
-			return fmt.Errorf("create http indexes: %w", err)
-		}
-		if _, err := indexes.CreateBucketIfNotExists([]byte(bucketIndexesDNS)); err != nil {
-			return fmt.Errorf("create dns indexes: %w", err)
 		}
 
 		return nil
@@ -105,15 +81,11 @@ func (s *Store) Close() error {
 
 // REMOVED: Devices, Profiles, Rules, TimeRules, UsageLimits, BypassRules stores
 // Configuration now managed in OPA policies
+// REMOVED: Logs, AdminUsers stores
+// Logs written to structured loggers, admin UI removed
 
 // Usage returns the usage store.
 func (s *Store) Usage() storage.UsageStore { return &usageStore{db: s.db} }
-
-// Logs returns the log store.
-func (s *Store) Logs() storage.LogStore { return &logStore{db: s.db} }
-
-// AdminUsers returns the admin user store.
-func (s *Store) AdminUsers() storage.AdminUserStore { return &adminUserStore{db: s.db} }
 
 // DHCPLeases returns the DHCP lease store.
 func (s *Store) DHCPLeases() storage.DHCPLeaseStore { return &dhcpLeaseStore{db: s.db} }
@@ -131,22 +103,6 @@ func unmarshal(data []byte, out any) error {
 		return fmt.Errorf("unmarshal value: %w", err)
 	}
 	return nil
-}
-
-func randomSuffix() (string, error) {
-	buf := make([]byte, 4)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("random suffix: %w", err)
-	}
-	return hex.EncodeToString(buf), nil
-}
-
-func logKey(prefix string, ts time.Time) (string, error) {
-	suffix, err := randomSuffix()
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s/%020d-%s", prefix, ts.UnixNano(), suffix), nil
 }
 
 func listBucket[T any](ctx context.Context, db *bbolt.DB, bucket string) ([]T, error) {
@@ -229,34 +185,4 @@ func deleteBucketValue(ctx context.Context, db *bbolt.DB, bucket string, key str
 		}
 		return b.Delete([]byte(key))
 	})
-}
-
-func ensureIndexBucket(tx *bbolt.Tx, path ...string) (*bbolt.Bucket, error) {
-	if len(path) == 0 {
-		return nil, fmt.Errorf("empty index bucket path")
-	}
-	root := tx.Bucket([]byte(bucketIndexes))
-	if root == nil {
-		return nil, fmt.Errorf("indexes bucket missing")
-	}
-	current := root
-	for _, part := range path {
-		bucket := current.Bucket([]byte(part))
-		if bucket == nil {
-			var err error
-			bucket, err = current.CreateBucketIfNotExists([]byte(part))
-			if err != nil {
-				return nil, err
-			}
-		}
-		current = bucket
-	}
-	return current, nil
-}
-
-func normalizeIndexKey(value string) string {
-	if value == "" {
-		return "unknown"
-	}
-	return strings.ToLower(value)
 }

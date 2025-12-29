@@ -13,7 +13,6 @@ import (
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
-	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
 
@@ -23,7 +22,6 @@ type Server struct {
 	httpsServer  *http.Server
 	policyEngine *policy.Engine
 	ca           *ca.CA
-	logStore     storage.LogStore
 	logger       zerolog.Logger
 	adminDomain  string
 }
@@ -40,13 +38,11 @@ func NewServer(
 	config Config,
 	policyEngine *policy.Engine,
 	ca *ca.CA,
-	logStore storage.LogStore,
 	logger zerolog.Logger,
 ) *Server {
 	s := &Server{
 		policyEngine: policyEngine,
 		ca:           ca,
-		logStore:     logStore,
 		logger:       logger.With().Str("component", "proxy").Logger(),
 		adminDomain:  config.AdminDomain,
 	}
@@ -400,36 +396,30 @@ func (s *Server) extractClientIP(r *http.Request) net.IP {
 	return net.ParseIP(host)
 }
 
-// logRequest logs a proxied request
+// logRequest logs a proxied request to structured logger
 func (s *Server) logRequest(req *policy.ProxyRequest, decision *policy.PolicyDecision, statusCode int, responseSize int64, durationMS int64) {
-	// Device identification now happens in OPA; use client IP/MAC for logging
-	deviceID := req.ClientIP.String()
+	// Log to structured logger
+	logEvent := s.logger.Info().
+		Str("client_ip", req.ClientIP.String())
+
 	if req.ClientMAC != nil {
-		deviceID = req.ClientMAC.String()
+		logEvent = logEvent.Str("client_mac", req.ClientMAC.String())
 	}
-	deviceName := deviceID
 
-	err := s.logStore.AddRequestLog(context.Background(), storage.RequestLog{
-		DeviceID:     deviceID,
-		DeviceName:   deviceName,
-		ClientIP:     req.ClientIP.String(),
-		Method:       req.Method,
-		Host:         req.Host,
-		Path:         req.Path,
-		UserAgent:    req.UserAgent,
-		StatusCode:   statusCode,
-		ResponseSize: responseSize,
-		DurationMS:   durationMS,
-		Action:       storage.Action(decision.Action),
-		MatchedRule:  decision.MatchedRuleID,
-		Reason:       decision.Reason,
-		Category:     decision.Category,
-		Encrypted:    req.Encrypted,
-	})
-
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to log request")
-	}
+	logEvent.
+		Str("method", req.Method).
+		Str("host", req.Host).
+		Str("path", req.Path).
+		Str("user_agent", req.UserAgent).
+		Int("status_code", statusCode).
+		Int64("response_size", responseSize).
+		Int64("duration_ms", durationMS).
+		Str("action", string(decision.Action)).
+		Str("matched_rule", decision.MatchedRuleID).
+		Str("reason", decision.Reason).
+		Str("category", decision.Category).
+		Bool("encrypted", req.Encrypted).
+		Msg("Proxy request processed")
 }
 
 // removeHopByHopHeaders removes hop-by-hop headers

@@ -17,12 +17,13 @@ KProxy follows a clean separation of concerns:
 3. **Go code enforces decisions**: Block, allow, inject timer, log requests
 
 **What's in the database:**
-- Operational data only: `request_logs`, `dns_logs`, `daily_usage`, `usage_sessions`
-- Admin authentication: `admin_users`
+- Operational data only: `daily_usage`, `usage_sessions`
 - Network state: `dhcp_leases`
 
 **What's NOT in the database:**
 - ~~Devices, Profiles, Rules, TimeRules, UsageLimits, BypassRules~~ (moved to OPA policies)
+- ~~request_logs, dns_logs~~ (logs written to structured logger - zerolog)
+- ~~admin_users~~ (admin UI removed, use Prometheus metrics for monitoring)
 
 ## Build & Development Commands
 
@@ -153,7 +154,7 @@ policy:
 main.go
   │
   ├─> Database (BoltDB) - operational data only
-  │     └─> Tables: usage_sessions, daily_usage, request_logs, dns_logs, admin_users, dhcp_leases
+  │     └─> Tables: usage_sessions, daily_usage, dhcp_leases
   │
   ├─> Certificate Authority (CA)
   │     └─> Loads root & intermediate certs for dynamic TLS generation
@@ -171,15 +172,17 @@ main.go
   ├─> DNS Server - DNS-level routing decisions
   │     ├─> Gathers facts: client IP, domain
   │     ├─> Calls OPA for BYPASS/INTERCEPT/BLOCK decision
+  │     ├─> Logs queries to structured logger (zerolog)
   │     └─> Returns proxy IP for intercepted domains
   │
   ├─> Proxy Server - HTTP/HTTPS request filtering
   │     ├─> Gathers facts: IP, MAC, host, path, time, usage
   │     ├─> Calls OPA for ALLOW/BLOCK decision
-  │     └─> Generates TLS certificates, logs requests
+  │     ├─> Logs requests to structured logger (zerolog)
+  │     └─> Generates TLS certificates
   │
-  └─> Admin API - management interface
-        └─> Read-only access to logs, stats (no policy CRUD)
+  └─> Metrics Server - Prometheus metrics endpoint
+        └─> Exposes metrics for monitoring (requests, DNS queries, blocks, usage, etc.)
 ```
 
 ### Critical Design Patterns
@@ -189,6 +192,8 @@ main.go
 3. **Two-Stage Filtering**: DNS decides bypass/intercept, Proxy enforces detailed rules
 4. **Dynamic TLS**: On-demand certificate generation with LRU cache
 5. **Category-Based Usage**: Track usage by category (entertainment, educational, etc.)
+6. **Metrics-Based Monitoring**: Prometheus metrics for observability, no admin UI
+7. **Structured Logging**: Logs written to zerolog (stdout/journal), not database
 
 ## Database Schema
 
@@ -196,10 +201,11 @@ BoltDB buckets (operational data only):
 
 - **usage_sessions**: Active usage tracking sessions
 - **daily_usage**: Accumulated usage time per device/category/date
-- **request_logs**: HTTP/HTTPS request logs
-- **dns_logs**: DNS query logs
-- **admin_users**: Admin user accounts
 - **dhcp_leases**: DHCP IP address leases
+
+**Removed buckets:**
+- ~~request_logs, dns_logs~~ → Logs written to structured logger (zerolog)
+- ~~admin_users~~ → Admin UI removed, use Prometheus metrics for monitoring
 
 ## Policy Evaluation Flow
 
@@ -276,12 +282,31 @@ The YAML config is loaded once at startup. Rego policies can be:
 - LRU cache (default 1000 entries, 24h TTL)
 
 ### Metrics & Observability
-Prometheus metrics via `internal/metrics/metrics.go`:
-- `kproxy_dns_queries_total` - DNS queries by action
-- `kproxy_requests_total` - HTTP/HTTPS requests by action
-- `kproxy_blocked_requests_total` - Blocked requests by reason
-- `kproxy_certificates_generated_total` - TLS cert generation
+
+**Prometheus metrics** via `internal/metrics/metrics.go`:
+- `kproxy_dns_queries_total` - DNS queries by device, action, query type
+- `kproxy_dns_query_duration_seconds` - DNS query latency
+- `kproxy_dns_upstream_errors_total` - Upstream DNS errors
+- `kproxy_requests_total` - HTTP/HTTPS requests by device, host, action, method
 - `kproxy_request_duration_seconds` - Request latency
+- `kproxy_blocked_requests_total` - Blocked requests by device, reason
+- `kproxy_certificates_generated_total` - TLS cert generation
+- `kproxy_certificate_cache_hits_total` - Certificate cache hits
+- `kproxy_certificate_cache_misses_total` - Certificate cache misses
+- `kproxy_usage_minutes_consumed_total` - Usage minutes by device, category
+- `kproxy_active_connections` - Active connections
+- `kproxy_dhcp_requests_total` - DHCP requests by type
+- `kproxy_dhcp_leases_active` - Active DHCP leases
+
+**Structured logging** via zerolog:
+- All DNS queries logged to stdout/journal with fields: `client_ip`, `domain`, `query_type`, `action`, `response_ip`, `upstream`, `latency_ms`
+- All HTTP/HTTPS requests logged with fields: `client_ip`, `client_mac`, `method`, `host`, `path`, `user_agent`, `status_code`, `response_size`, `duration_ms`, `action`, `matched_rule`, `reason`, `category`, `encrypted`
+- Logs routed via systemd journal, syslog, or log aggregation tools (Vector, Fluentd, etc.)
+
+**Monitoring stack:**
+- Use Prometheus to scrape metrics from `http://<server>:9090/metrics`
+- Use Grafana or similar for dashboards and visualization
+- Use log aggregation tools for log analysis and search
 
 ## OPA Integration
 
@@ -419,7 +444,8 @@ kproxy/
 │   ├── dns/server.go               # DNS server
 │   ├── proxy/server.go             # HTTP/HTTPS proxy
 │   ├── ca/ca.go                    # Certificate authority
-│   └── admin/                      # Admin API (read-only for logs/stats)
+│   ├── metrics/metrics.go          # Prometheus metrics
+│   └── config/config.go            # Configuration loader
 ├── policies/
 │   ├── config.rego                 # Central configuration
 │   ├── device.rego                 # Device identification

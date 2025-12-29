@@ -20,7 +20,6 @@ type Config struct {
 	Policy   PolicyConfig   `mapstructure:"policy"`
 	Usage    UsageConfig    `mapstructure:"usage_tracking"`
 	Response ResponseConfig `mapstructure:"response_modification"`
-	Admin    AdminConfig    `mapstructure:"admin"`
 }
 
 // ServerConfig defines server ports and addresses
@@ -30,8 +29,7 @@ type ServerConfig struct {
 	DNSEnableTCP bool   `mapstructure:"dns_enable_tcp"`
 	HTTPPort     int    `mapstructure:"http_port"`
 	HTTPSPort    int    `mapstructure:"https_port"`
-	AdminPort    int    `mapstructure:"admin_port"`
-	AdminDomain  string `mapstructure:"admin_domain"`
+	AdminDomain  string `mapstructure:"admin_domain"` // Domain for admin-related requests (kept for compatibility)
 	MetricsPort  int    `mapstructure:"metrics_port"`
 	BindAddress  string `mapstructure:"bind_address"`
 	ProxyIP      string `mapstructure:"proxy_ip"` // IP address returned in DNS intercept responses
@@ -84,9 +82,8 @@ type StorageConfig struct {
 
 // LoggingConfig defines logging behavior
 type LoggingConfig struct {
-	Level                   string `mapstructure:"level"`
-	Format                  string `mapstructure:"format"`
-	RequestLogRetentionDays int    `mapstructure:"request_log_retention_days"`
+	Level  string `mapstructure:"level"`
+	Format string `mapstructure:"format"`
 }
 
 // PolicyConfig defines policy engine defaults
@@ -114,19 +111,6 @@ type ResponseConfig struct {
 	Enabled             bool     `mapstructure:"enabled"`
 	DisabledHosts       []string `mapstructure:"disabled_hosts"`
 	AllowedContentTypes []string `mapstructure:"allowed_content_types"`
-}
-
-// AdminConfig defines admin interface settings
-type AdminConfig struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	Port            int    `mapstructure:"port"`
-	BindAddress     string `mapstructure:"bind_address"`
-	InitialUsername string `mapstructure:"initial_username"`
-	InitialPassword string `mapstructure:"initial_password"`
-	JWTSecret       string `mapstructure:"jwt_secret"`
-	SessionTimeout  string `mapstructure:"session_timeout"`
-	RateLimit       int    `mapstructure:"rate_limit"`
-	RateLimitWindow string `mapstructure:"rate_limit_window"`
 }
 
 // Load loads configuration from file and environment variables
@@ -172,7 +156,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.dns_enable_tcp", true)
 	v.SetDefault("server.http_port", 80)
 	v.SetDefault("server.https_port", 443)
-	v.SetDefault("server.admin_port", 8443)
 	v.SetDefault("server.admin_domain", "kproxy.home.local")
 	v.SetDefault("server.metrics_port", 9090)
 	v.SetDefault("server.bind_address", "0.0.0.0")
@@ -214,7 +197,6 @@ func setDefaults(v *viper.Viper) {
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "json")
-	v.SetDefault("logging.request_log_retention_days", 30)
 
 	// Policy defaults
 	v.SetDefault("policy.default_action", "block")
@@ -236,12 +218,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("response_modification.enabled", true)
 	v.SetDefault("response_modification.disabled_hosts", []string{"*.bank.com", "secure.*"})
 	v.SetDefault("response_modification.allowed_content_types", []string{"text/html"})
-
-	// Admin defaults
-	v.SetDefault("admin.initial_username", "admin")
-	v.SetDefault("admin.initial_password", "changeme")
-	v.SetDefault("admin.session_timeout", "24h")
-	v.SetDefault("admin.rate_limit", 100)
 }
 
 // validate validates the configuration
