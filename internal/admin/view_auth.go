@@ -67,8 +67,8 @@ func (v *AuthViews) Login(ctx *gin.Context) {
 		int(session.ExpiresAt.Sub(time.Now()).Seconds()),
 		"/",
 		"",
-		true,  // Secure
-		true,  // HttpOnly
+		true, // Secure
+		true, // HttpOnly
 	)
 
 	ctx.SetCookie(
@@ -77,8 +77,8 @@ func (v *AuthViews) Login(ctx *gin.Context) {
 		int(session.ExpiresAt.Sub(time.Now()).Seconds()),
 		"/",
 		"",
-		true,  // Secure
-		true,  // HttpOnly
+		true, // Secure
+		true, // HttpOnly
 	)
 
 	// Return response

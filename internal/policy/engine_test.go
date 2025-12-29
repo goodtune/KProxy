@@ -15,12 +15,12 @@ import (
 
 // Test network configuration
 const (
-	serverIP         = "172.16.1.1"
-	adultClientIP    = "172.16.2.100" // From 172.16.2.0/24
-	childClientIP    = "172.16.3.100" // From 172.16.3.0/24
-	testDomain       = "www.example.com"
-	testApexDomain   = "example.com"
-	testSubdomain    = "mail.example.com"
+	serverIP       = "172.16.1.1"
+	adultClientIP  = "172.16.2.100" // From 172.16.2.0/24
+	childClientIP  = "172.16.3.100" // From 172.16.3.0/24
+	testDomain     = "www.example.com"
+	testApexDomain = "example.com"
+	testSubdomain  = "mail.example.com"
 )
 
 // TestPolicyEnforcement_BaselineNoConfig tests that with no devices, profiles, or rules,
@@ -232,7 +232,7 @@ func TestPolicyEnforcement_ExactDomainMatching(t *testing.T) {
 		ID:        "rule-exact",
 		ProfileID: "child-profile",
 		Domain:    "example.com", // Exact match only
-		Paths:    []string{},
+		Paths:     []string{},
 		Action:    storage.ActionAllow,
 		Priority:  100,
 	}
@@ -321,7 +321,7 @@ func TestPolicyEnforcement_LeadingDotMatching(t *testing.T) {
 		ID:        "rule-dot",
 		ProfileID: "child-profile",
 		Domain:    ".example.com", // Leading dot
-		Paths:    []string{},
+		Paths:     []string{},
 		Action:    storage.ActionAllow,
 		Priority:  100,
 	}
@@ -417,7 +417,7 @@ func TestPolicyEnforcement_WildcardMatching(t *testing.T) {
 		ID:        "rule-wildcard",
 		ProfileID: "child-profile",
 		Domain:    "*.example.com", // Wildcard
-		Paths:    []string{},
+		Paths:     []string{},
 		Action:    storage.ActionAllow,
 		Priority:  100,
 	}
@@ -535,10 +535,10 @@ func TestPolicyEnforcement_RulePriority(t *testing.T) {
 	engine := newTestEngine(t, store)
 
 	tests := []struct {
-		name     string
-		domain   string
-		want     Action
-		wantMsg  string
+		name    string
+		domain  string
+		want    Action
+		wantMsg string
 	}{
 		{
 			name:    "blocked.example.com - high priority block rule wins",
@@ -588,11 +588,11 @@ func TestPolicyEnforcement_DeviceIdentification(t *testing.T) {
 
 	// Create device with multiple identifier types
 	device := storage.Device{
-		ID: "test-device",
+		ID:   "test-device",
 		Name: "Test Device",
 		Identifiers: []string{
-			"172.16.2.50",      // Exact IP
-			"172.16.3.0/24",    // CIDR range
+			"172.16.2.50",       // Exact IP
+			"172.16.3.0/24",     // CIDR range
 			"aa:bb:cc:dd:ee:ff", // MAC address
 		},
 		ProfileID: "test-profile",
@@ -691,7 +691,7 @@ func TestPolicyEnforcement_PathMatching(t *testing.T) {
 		ID:        "rule-path",
 		ProfileID: "test-profile",
 		Domain:    "example.com",
-		Paths:    []string{"/public"},
+		Paths:     []string{"/public"},
 		Action:    storage.ActionAllow,
 		Priority:  100,
 	}
@@ -984,41 +984,41 @@ func TestPolicyEnforcement_TimeRestrictions(t *testing.T) {
 	tests := []struct {
 		name                 string
 		domain               string
-		dayOfWeek            int    // 0=Sunday, 1=Monday, etc.
-		minutesSinceMidnight int    // Time of day in minutes (e.g., 360 = 06:00)
+		dayOfWeek            int // 0=Sunday, 1=Monday, etc.
+		minutesSinceMidnight int // Time of day in minutes (e.g., 360 = 06:00)
 		wantAction           Action
 		wantReason           string // Expected exact reason (empty = don't check)
 		wantReasonNot        string // Reason must NOT equal this (empty = don't check)
 		description          string
 	}{
 		{
-			name:             "access_during_allowed_hours_morning",
-			domain:           "www.example.com",
-			dayOfWeek:        2, // Tuesday
+			name:                 "access_during_allowed_hours_morning",
+			domain:               "www.example.com",
+			dayOfWeek:            2,   // Tuesday
 			minutesSinceMidnight: 360, // 06:00 (start of allowed period)
-			wantAction:       ActionAllow,
-			description:      "should ALLOW at start of time window (06:00)",
+			wantAction:           ActionAllow,
+			description:          "should ALLOW at start of time window (06:00)",
 		},
 		{
-			name:             "access_during_allowed_hours_midday",
-			domain:           "example.com",
-			dayOfWeek:        3, // Wednesday
+			name:                 "access_during_allowed_hours_midday",
+			domain:               "example.com",
+			dayOfWeek:            3,   // Wednesday
 			minutesSinceMidnight: 600, // 10:00 (middle of allowed period)
-			wantAction:       ActionAllow,
-			description:      "should ALLOW during time window (10:00)",
+			wantAction:           ActionAllow,
+			description:          "should ALLOW during time window (10:00)",
 		},
 		{
-			name:             "access_during_allowed_hours_evening",
-			domain:           "mail.example.com",
-			dayOfWeek:        4, // Thursday
+			name:                 "access_during_allowed_hours_evening",
+			domain:               "mail.example.com",
+			dayOfWeek:            4,    // Thursday
 			minutesSinceMidnight: 1400, // 23:20 (end of allowed period)
-			wantAction:       ActionAllow,
-			description:      "should ALLOW at end of time window (23:20)",
+			wantAction:           ActionAllow,
+			description:          "should ALLOW at end of time window (23:20)",
 		},
 		{
 			name:                 "access_before_allowed_hours",
 			domain:               "www.example.com",
-			dayOfWeek:            2, // Tuesday
+			dayOfWeek:            2,   // Tuesday
 			minutesSinceMidnight: 300, // 05:00 (before allowed period)
 			wantAction:           ActionBlock,
 			wantReason:           "outside allowed hours",
@@ -1027,7 +1027,7 @@ func TestPolicyEnforcement_TimeRestrictions(t *testing.T) {
 		{
 			name:                 "access_after_allowed_hours",
 			domain:               "example.com",
-			dayOfWeek:            5, // Friday
+			dayOfWeek:            5,    // Friday
 			minutesSinceMidnight: 1410, // 23:30 (after allowed period)
 			wantAction:           ActionBlock,
 			wantReason:           "outside allowed hours",
@@ -1036,7 +1036,7 @@ func TestPolicyEnforcement_TimeRestrictions(t *testing.T) {
 		{
 			name:                 "access_late_night",
 			domain:               "mail.example.com",
-			dayOfWeek:            6, // Saturday
+			dayOfWeek:            6,   // Saturday
 			minutesSinceMidnight: 120, // 02:00 (well outside allowed period)
 			wantAction:           ActionBlock,
 			wantReason:           "outside allowed hours",
@@ -1045,7 +1045,7 @@ func TestPolicyEnforcement_TimeRestrictions(t *testing.T) {
 		{
 			name:                 "different_domain_no_rule",
 			domain:               "other.com",
-			dayOfWeek:            2, // Tuesday
+			dayOfWeek:            2,   // Tuesday
 			minutesSinceMidnight: 300, // 05:00 (outside time window for .example.com)
 			wantAction:           ActionBlock,
 			wantReason:           "default deny",
@@ -1058,8 +1058,8 @@ func TestPolicyEnforcement_TimeRestrictions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set the test clock to specific time
 			testTime := time.Date(2025, 1, int(tt.dayOfWeek)+4, // Sunday=0, so offset to get right weekday
-				tt.minutesSinceMidnight/60,        // hours
-				tt.minutesSinceMidnight%60,        // minutes
+				tt.minutesSinceMidnight/60, // hours
+				tt.minutesSinceMidnight%60, // minutes
 				0, 0, time.Local)
 			engine.SetClock(&TestClock{CurrentTime: testTime})
 
@@ -1157,12 +1157,12 @@ func TestPolicyEnforcement_BypassAction(t *testing.T) {
 	clientIP := "192.168.5.100"
 
 	tests := []struct {
-		name         string
-		host         string
-		path         string
-		wantAction   Action
-		wantReason   string
-		description  string
+		name        string
+		host        string
+		path        string
+		wantAction  Action
+		wantReason  string
+		description string
 	}{
 		{
 			name:        "bypass_rule_exact_domain",

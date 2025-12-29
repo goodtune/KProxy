@@ -91,15 +91,15 @@ type LoggingConfig struct {
 
 // PolicyConfig defines policy engine defaults
 type PolicyConfig struct {
-	DefaultAction    string   `mapstructure:"default_action"`
-	DefaultAllow     bool     `mapstructure:"default_allow"`
-	UseMACAddress    bool     `mapstructure:"use_mac_address"`
-	ARPCacheTTL      string   `mapstructure:"arp_cache_ttl"`
-	OPAPolicyDir     string   `mapstructure:"opa_policy_dir"`
-	OPAPolicySource  string   `mapstructure:"opa_policy_source"`  // "filesystem" or "remote"
-	OPAPolicyURLs    []string `mapstructure:"opa_policy_urls"`    // URLs for remote policies
-	OPAHTTPTimeout   string   `mapstructure:"opa_http_timeout"`   // Timeout for HTTP requests
-	OPAHTTPRetries   int      `mapstructure:"opa_http_retries"`   // Number of retries
+	DefaultAction   string   `mapstructure:"default_action"`
+	DefaultAllow    bool     `mapstructure:"default_allow"`
+	UseMACAddress   bool     `mapstructure:"use_mac_address"`
+	ARPCacheTTL     string   `mapstructure:"arp_cache_ttl"`
+	OPAPolicyDir    string   `mapstructure:"opa_policy_dir"`
+	OPAPolicySource string   `mapstructure:"opa_policy_source"` // "filesystem" or "remote"
+	OPAPolicyURLs   []string `mapstructure:"opa_policy_urls"`   // URLs for remote policies
+	OPAHTTPTimeout  string   `mapstructure:"opa_http_timeout"`  // Timeout for HTTP requests
+	OPAHTTPRetries  int      `mapstructure:"opa_http_retries"`  // Number of retries
 }
 
 // UsageConfig defines usage tracking settings

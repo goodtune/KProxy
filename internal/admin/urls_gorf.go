@@ -17,11 +17,11 @@ import (
 
 // AdminDeps holds dependencies needed for admin routes.
 type AdminDeps struct {
-	Store storage.Store
-	Auth          *AuthService
-	PolicyEngine  *policy.Engine
-	UsageTracker  *usage.Tracker
-	Logger        zerolog.Logger
+	Store          storage.Store
+	Auth           *AuthService
+	PolicyEngine   *policy.Engine
+	UsageTracker   *usage.Tracker
+	Logger         zerolog.Logger
 	AllowedOrigins []string
 }
 

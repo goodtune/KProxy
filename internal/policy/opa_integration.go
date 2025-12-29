@@ -34,12 +34,12 @@ func (e *Engine) buildDNSInput(clientIP net.IP, domain string) map[string]interf
 	}
 
 	return map[string]interface{}{
-		"client_ip":        clientIP.String(),
-		"domain":           domain,
-		"global_bypass":    e.globalBypass,
-		"bypass_rules":     bypassRulesArray,
-		"devices":          devicesMap,
-		"use_mac_address":  e.useMACAddress,
+		"client_ip":       clientIP.String(),
+		"domain":          domain,
+		"global_bypass":   e.globalBypass,
+		"bypass_rules":    bypassRulesArray,
+		"devices":         devicesMap,
+		"use_mac_address": e.useMACAddress,
 	}
 }
 
