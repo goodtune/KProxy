@@ -84,7 +84,11 @@ func main() {
 		}
 	}()
 
-	logger.Info().Str("path", cfg.Storage.Path).Str("type", cfg.Storage.Type).Msg("Storage initialized")
+	logger.Info().
+		Str("type", cfg.Storage.Type).
+		Str("redis_host", cfg.Storage.Redis.Host).
+		Int("redis_port", cfg.Storage.Redis.Port).
+		Msg("Storage initialized")
 
 	// Initialize Certificate Authority
 	caConfig := ca.Config{

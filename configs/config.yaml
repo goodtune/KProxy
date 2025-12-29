@@ -1,4 +1,4 @@
-# KProxy Configuration Example
+# KProxy Configuration
 
 server:
   # DNS server (primary entry point for clients)
@@ -10,11 +10,7 @@ server:
   http_port: 80
   https_port: 443
 
-  # Admin interface
-  admin_port: 8443
-  admin_domain: "kproxy.home.local"
-
-  # Metrics
+  # Metrics (Prometheus endpoint - replaces admin UI)
   metrics_port: 9090
 
   # Bind address (0.0.0.0 for all interfaces)
@@ -58,15 +54,44 @@ tls:
   cert_validity: "24h"
 
 storage:
-  type: "bolt"
-  path: "/var/lib/kproxy/kproxy.bolt"
+  # Storage backend - Redis only (BoltDB support removed)
+  type: "redis"
+
+  # Redis settings
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""
+    db: 0
+
+    # Connection pool
+    pool_size: 10
+    min_idle_conns: 5
+
+    # Timeouts
+    dial_timeout: "5s"
+    read_timeout: "3s"
+    write_timeout: "3s"
 
 logging:
   level: "info"  # debug, info, warn, error
   format: "json" # json, text
-  request_log_retention_days: 30
 
 policy:
+  # OPA policy configuration
+  opa_policy_source: "filesystem"  # "filesystem" or "remote"
+  opa_policy_dir: "/etc/kproxy/policies"  # Path to Rego policy files
+
+  # For remote policy loading (alternative to filesystem):
+  # opa_policy_urls:
+  #   - "https://policy-server.example.com/policies/config.rego"
+  #   - "https://policy-server.example.com/policies/device.rego"
+  #   - "https://policy-server.example.com/policies/dns.rego"
+  #   - "https://policy-server.example.com/policies/proxy.rego"
+  #   - "https://policy-server.example.com/policies/helpers.rego"
+  # opa_http_timeout: "30s"
+  # opa_http_retries: 3
+
   # Default action for unknown devices
   default_action: "block"  # or "allow"
 
@@ -99,25 +124,3 @@ response_modification:
   # Content types to modify
   allowed_content_types:
     - "text/html"
-
-admin:
-  # Enable/disable admin interface
-  enabled: true
-
-  # Admin interface port and bind address
-  port: 8443
-  bind_address: "0.0.0.0"
-
-  # Initial admin credentials (change on first login!)
-  initial_username: "admin"
-  initial_password: "changeme"
-
-  # JWT secret for session tokens (CHANGE THIS!)
-  jwt_secret: "change-this-to-a-random-secret-key"
-
-  # Session settings
-  session_timeout: "24h"
-
-  # Rate limiting
-  rate_limit: 100  # requests per window
-  rate_limit_window: "1m"

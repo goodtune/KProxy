@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -76,7 +74,6 @@ type TLSConfig struct {
 
 // StorageConfig defines storage backend settings
 type StorageConfig struct {
-	Path  string      `mapstructure:"path"`
 	Type  string      `mapstructure:"type"`
 	Redis RedisConfig `mapstructure:"redis"`
 }
@@ -264,19 +261,21 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("at least one upstream DNS server is required")
 	}
 
-	// Validate storage path
-	if cfg.Storage.Path == "" {
-		return fmt.Errorf("storage path is required")
-	}
-
+	// Validate storage configuration (Redis only)
 	if cfg.Storage.Type == "" {
-		cfg.Storage.Type = "bolt"
+		cfg.Storage.Type = "redis"
 	}
 
-	// Ensure storage directory exists
-	storageDir := filepath.Dir(cfg.Storage.Path)
-	if err := os.MkdirAll(storageDir, 0755); err != nil {
-		return fmt.Errorf("failed to create storage directory: %w", err)
+	if cfg.Storage.Type != "redis" {
+		return fmt.Errorf("unsupported storage type: %s (only redis is supported)", cfg.Storage.Type)
+	}
+
+	// Validate Redis configuration
+	if cfg.Storage.Redis.Host == "" {
+		return fmt.Errorf("redis host is required")
+	}
+	if cfg.Storage.Redis.Port == 0 {
+		return fmt.Errorf("redis port is required")
 	}
 
 	return nil
