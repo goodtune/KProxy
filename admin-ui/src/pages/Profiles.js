@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { getProfiles, createProfile, updateProfile, deleteProfile } from '../services/api';
+import usePageId from '../hooks/usePageId';
 
 const Profiles = () => {
+  usePageId('profiles');
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

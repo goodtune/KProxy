@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { getActiveSessions, getDailyUsage, terminateSession } from '../services/api';
+import usePageId from '../hooks/usePageId';
 
 const Sessions = () => {
+  usePageId('sessions');
   const [activeTab, setActiveTab] = useState('active');
   const [sessions, setSessions] = useState([]);
   const [usageData, setUsageData] = useState([]);

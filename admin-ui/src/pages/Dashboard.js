@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { getStats } from '../services/api';
+import usePageId from '../hooks/usePageId';
 
 const Dashboard = () => {
+  usePageId('dashboard');
   const [stats, setStats] = useState({
     devices: 0,
     profiles: 0,

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { getRequestLogs, getDNSLogs } from '../services/api';
+import usePageId from '../hooks/usePageId';
 
 const Logs = () => {
+  usePageId('logs');
   const [activeTab, setActiveTab] = useState('request');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);

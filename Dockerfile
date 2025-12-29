@@ -10,10 +10,10 @@ RUN apk add --no-cache git make
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source
+# Copy source (including pre-built admin-ui/build directory)
 COPY . .
 
-# Build binary
+# Build binary (will embed the pre-built React app from admin-ui/build)
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/kproxy ./cmd/kproxy
 
 FROM alpine:3.19 AS runtime
@@ -23,13 +23,14 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates openssl curl bash
 
 # Create directories and users
-RUN mkdir -p /etc/kproxy/ca /var/lib/kproxy && \
+RUN mkdir -p /etc/kproxy/ca /etc/kproxy/policies /var/lib/kproxy && \
     addgroup -g 1000 kproxy && adduser -D -u 1000 -G kproxy kproxy
 
 # Copy binary and scripts
 COPY --from=builder /out/kproxy /usr/local/bin/kproxy
 COPY scripts/generate-ca.sh /usr/local/bin/generate-ca.sh
 COPY tests/docker/config.yaml /etc/kproxy/config.yaml
+COPY policies/*.rego /etc/kproxy/policies/
 
 RUN chmod +x /usr/local/bin/kproxy /usr/local/bin/generate-ca.sh
 
