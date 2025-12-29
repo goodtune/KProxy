@@ -75,20 +75,13 @@ decision := {
 	not within_allowed_time(profile.time_restrictions, input.time)
 }
 
-# Decision 4: Evaluate rules (priority order)
+# Decision 4: Evaluate rules (if time allowed and rule matches)
 decision := result if {
 	dev := device.identified_device
 	profile := config.profiles[dev.profile]
 
-	# Within allowed time (or no time restrictions)
-	count(profile.time_restrictions) == 0
-} else := result if {
-	dev := device.identified_device
-	profile := config.profiles[dev.profile]
-	within_allowed_time(profile.time_restrictions, input.time)
-} else := result if {
-	dev := device.identified_device
-	profile := config.profiles[dev.profile]
+	# Time must be allowed: either no restrictions OR within allowed time
+	time_is_allowed(profile.time_restrictions, input.time)
 
 	# Find first matching rule
 	rule := first_matching_rule(profile.rules, input.host, input.path)
@@ -123,6 +116,16 @@ decision := {
 within_allowed_time(restrictions, current_time) if {
 	some window_name, window in restrictions
 	within_time_window(window, current_time)
+}
+
+# Helper: Check if current time is allowed (no restrictions OR within allowed time)
+time_is_allowed(restrictions, current_time) if {
+	count(restrictions) == 0
+}
+
+time_is_allowed(restrictions, current_time) if {
+	count(restrictions) > 0
+	within_allowed_time(restrictions, current_time)
 }
 
 # Helper: Check if time is within a specific window
