@@ -29,10 +29,12 @@ KProxy follows a clean separation of concerns:
 
 ### Building
 ```bash
-make build          # Build kproxy binary (requires CGO_ENABLED=1)
+make build          # Build kproxy binary (no CGO required with Redis storage)
 make tidy           # Run go mod tidy
 make clean          # Remove build artifacts
 ```
+
+**Note**: Builds with `CGO_ENABLED=0` (no CGO required).
 
 ### Testing & Quality
 ```bash
@@ -153,8 +155,8 @@ policy:
 ```
 main.go
   │
-  ├─> Database (BoltDB) - operational data only
-  │     └─> Tables: usage_sessions, daily_usage, dhcp_leases
+  ├─> Database (Redis) - operational data only
+  │     └─> Data: usage_sessions, daily_usage, dhcp_leases
   │
   ├─> Certificate Authority (CA)
   │     └─> Loads root & intermediate certs for dynamic TLS generation
@@ -195,15 +197,27 @@ main.go
 6. **Metrics-Based Monitoring**: Prometheus metrics for observability, no admin UI
 7. **Structured Logging**: Logs written to zerolog (stdout/journal), not database
 
-## Database Schema
+## Storage Backend
 
-BoltDB buckets (operational data only):
+KProxy uses **Redis** for operational data storage (configured via `storage.redis` in config.yaml):
 
+### Redis Storage
+- **Benefits**: No CGO required, horizontal scaling, automatic TTL-based cleanup, atomic operations
+- **Data structure**: Redis Hashes with Sets for indexes
+- **Key patterns**:
+  - `kproxy:session:{id}` - UsageSession data
+  - `kproxy:sessions:active` - Set of active session IDs
+  - `kproxy:usage:daily:{date}:{deviceID}:{limitID}` - DailyUsage data
+  - `kproxy:dhcp:mac:{mac}` - DHCPLease data
+  - `kproxy:dhcp:ip:{ip}` - IP→MAC secondary index
+
+### Operational Data Only
+Redis stores only operational data:
 - **usage_sessions**: Active usage tracking sessions
 - **daily_usage**: Accumulated usage time per device/category/date
 - **dhcp_leases**: DHCP IP address leases
 
-**Removed buckets:**
+**Removed data:**
 - ~~request_logs, dns_logs~~ → Logs written to structured logger (zerolog)
 - ~~admin_users~~ → Admin UI removed, use Prometheus metrics for monitoring
 
@@ -400,7 +414,7 @@ policy:
    - **Filesystem**: Policies in `opa_policy_dir` (default `/etc/kproxy/policies`)
    - **Remote**: All URLs must be accessible at startup
 4. **Remote Policy Security**: Use HTTPS, implement auth on policy server
-5. **CGO Requirement**: Building requires `CGO_ENABLED=1` for BoltDB
+5. **Storage Backend**: Redis (no CGO required)
 6. **Port Permissions**: DNS (53), HTTP (80), HTTPS (443) require root/CAP_NET_BIND_SERVICE
 7. **CA Trust**: Clients must trust root CA for HTTPS interception
 8. **Usage Tracking**: Category names in `gatherUsageFacts()` must match policy categories
@@ -411,7 +425,7 @@ policy:
 The project was refactored from database-backed configuration to fact-based OPA:
 
 **Old approach:**
-- Devices, profiles, rules stored in BoltDB
+- Devices, profiles, rules stored in database
 - Go code loaded config from DB into memory
 - OPA evaluated pre-loaded config data
 
@@ -437,7 +451,7 @@ kproxy/
 │   ├── storage/
 │   │   ├── store.go                # Storage interface (operational data only)
 │   │   ├── types.go                # Storage types
-│   │   └── bolt/                   # BoltDB implementation
+│   │   └── redis/                  # Redis implementation
 │   ├── usage/
 │   │   ├── tracker.go              # Usage session tracking
 │   │   └── reset.go                # Daily usage reset scheduler

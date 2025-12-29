@@ -1,7 +1,6 @@
 package dns
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"strings"

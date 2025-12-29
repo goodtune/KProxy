@@ -37,7 +37,7 @@ import (
 	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/proxy"
 	"github.com/goodtune/kproxy/internal/storage"
-	"github.com/goodtune/kproxy/internal/storage/bolt"
+	"github.com/goodtune/kproxy/internal/storage/redis"
 	"github.com/goodtune/kproxy/internal/usage"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -337,14 +337,14 @@ func main() {
 func openStorage(cfg config.StorageConfig) (storage.Store, error) {
 	storageType := cfg.Type
 	if storageType == "" {
-		storageType = "bolt"
+		storageType = "redis"
 	}
 
 	switch storageType {
-	case "bolt", "bbolt":
-		return bolt.Open(cfg.Path)
+	case "redis":
+		return redis.Open(cfg.Redis)
 	default:
-		return nil, fmt.Errorf("unsupported storage type: %s", storageType)
+		return nil, fmt.Errorf("unsupported storage type: %s (only 'redis' is supported)", storageType)
 	}
 }
 

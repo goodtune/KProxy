@@ -76,8 +76,26 @@ type TLSConfig struct {
 
 // StorageConfig defines storage backend settings
 type StorageConfig struct {
-	Path string `mapstructure:"path"`
-	Type string `mapstructure:"type"`
+	Path  string      `mapstructure:"path"`
+	Type  string      `mapstructure:"type"`
+	Redis RedisConfig `mapstructure:"redis"`
+}
+
+// RedisConfig defines Redis connection settings
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+
+	// Connection pool
+	PoolSize     int `mapstructure:"pool_size"`
+	MinIdleConns int `mapstructure:"min_idle_conns"`
+
+	// Timeouts
+	DialTimeout  string `mapstructure:"dial_timeout"`
+	ReadTimeout  string `mapstructure:"read_timeout"`
+	WriteTimeout string `mapstructure:"write_timeout"`
 }
 
 // LoggingConfig defines logging behavior
@@ -88,15 +106,15 @@ type LoggingConfig struct {
 
 // PolicyConfig defines policy engine defaults
 type PolicyConfig struct {
-	DefaultAction    string   `mapstructure:"default_action"`
-	DefaultAllow     bool     `mapstructure:"default_allow"`
-	UseMACAddress    bool     `mapstructure:"use_mac_address"`
-	ARPCacheTTL      string   `mapstructure:"arp_cache_ttl"`
-	OPAPolicyDir     string   `mapstructure:"opa_policy_dir"`
-	OPAPolicySource  string   `mapstructure:"opa_policy_source"`  // "filesystem" or "remote"
-	OPAPolicyURLs    []string `mapstructure:"opa_policy_urls"`    // URLs for remote policies
-	OPAHTTPTimeout   string   `mapstructure:"opa_http_timeout"`   // Timeout for HTTP requests
-	OPAHTTPRetries   int      `mapstructure:"opa_http_retries"`   // Number of retries
+	DefaultAction   string   `mapstructure:"default_action"`
+	DefaultAllow    bool     `mapstructure:"default_allow"`
+	UseMACAddress   bool     `mapstructure:"use_mac_address"`
+	ARPCacheTTL     string   `mapstructure:"arp_cache_ttl"`
+	OPAPolicyDir    string   `mapstructure:"opa_policy_dir"`
+	OPAPolicySource string   `mapstructure:"opa_policy_source"` // "filesystem" or "remote"
+	OPAPolicyURLs   []string `mapstructure:"opa_policy_urls"`   // URLs for remote policies
+	OPAHTTPTimeout  string   `mapstructure:"opa_http_timeout"`  // Timeout for HTTP requests
+	OPAHTTPRetries  int      `mapstructure:"opa_http_retries"`  // Number of retries
 }
 
 // UsageConfig defines usage tracking settings
@@ -191,8 +209,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tls.cert_validity", "24h")
 
 	// Storage defaults
-	v.SetDefault("storage.path", "/var/lib/kproxy/kproxy.bolt")
-	v.SetDefault("storage.type", "bolt")
+	v.SetDefault("storage.type", "redis")
+	v.SetDefault("storage.redis.host", "localhost")
+	v.SetDefault("storage.redis.port", 6379)
+	v.SetDefault("storage.redis.password", "")
+	v.SetDefault("storage.redis.db", 0)
+	v.SetDefault("storage.redis.pool_size", 10)
+	v.SetDefault("storage.redis.min_idle_conns", 5)
+	v.SetDefault("storage.redis.dial_timeout", "5s")
+	v.SetDefault("storage.redis.read_timeout", "3s")
+	v.SetDefault("storage.redis.write_timeout", "3s")
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")

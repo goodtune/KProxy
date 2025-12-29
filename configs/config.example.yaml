@@ -93,8 +93,24 @@ tls:
   cert_validity: "24h"
 
 storage:
-  type: "bolt"
-  path: "/var/lib/kproxy/kproxy.bolt"
+  # Storage backend type (only Redis is supported)
+  type: "redis"
+
+  # Redis settings
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""
+    db: 0
+
+    # Connection pool
+    pool_size: 10
+    min_idle_conns: 5
+
+    # Timeouts
+    dial_timeout: "5s"
+    read_timeout: "3s"
+    write_timeout: "3s"
 
 logging:
   level: "info"  # debug, info, warn, error
