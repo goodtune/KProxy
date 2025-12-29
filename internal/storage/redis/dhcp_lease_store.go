@@ -200,7 +200,6 @@ func (s *dhcpLeaseStore) DeleteExpired(ctx context.Context) (int, error) {
 	}
 
 	// Check which leases are expired
-	toDelete := make([]string, 0)
 	var deletedCount int
 
 	for i, cmd := range cmds {
@@ -217,7 +216,6 @@ func (s *dhcpLeaseStore) DeleteExpired(ctx context.Context) (int, error) {
 
 		if now.After(expiresAt) {
 			mac := macs[i]
-			toDelete = append(toDelete, mac)
 
 			// Delete the lease
 			macKey := fmt.Sprintf("kproxy:dhcp:mac:%s", mac)

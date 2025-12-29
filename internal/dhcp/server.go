@@ -170,11 +170,15 @@ func (s *Server) handleDHCP(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4
 		response, err = s.handleRequest(m)
 		metrics.DHCPRequestsTotal.WithLabelValues("request").Inc()
 	case dhcpv4.MessageTypeRelease:
-		err = s.handleRelease(m)
+		if err = s.handleRelease(m); err != nil {
+			s.logger.Error().Err(err).Msg("Error handling DHCP release")
+		}
 		metrics.DHCPRequestsTotal.WithLabelValues("release").Inc()
 		return // No response needed for release
 	case dhcpv4.MessageTypeDecline:
-		err = s.handleDecline(m)
+		if err = s.handleDecline(m); err != nil {
+			s.logger.Error().Err(err).Msg("Error handling DHCP decline")
+		}
 		metrics.DHCPRequestsTotal.WithLabelValues("decline").Inc()
 		return // No response needed for decline
 	default:
@@ -416,7 +420,8 @@ func (s *Server) addBootOptions(resp *dhcpv4.DHCPv4, req *dhcpv4.DHCPv4) {
 			arch := binary.BigEndian.Uint16(archType)
 
 			// 0x0000 = BIOS, 0x0007 = UEFI x64, 0x0009 = UEFI x64 HTTP
-			if arch == 0x0000 {
+			switch arch {
+			case 0x0000:
 				// BIOS PXE boot
 				if s.config.BootFileName != "" {
 					resp.UpdateOption(dhcpv4.OptBootFileName(s.config.BootFileName))
@@ -433,7 +438,7 @@ func (s *Server) addBootOptions(resp *dhcpv4.DHCPv4, req *dhcpv4.DHCPv4) {
 					Str("mode", "BIOS").
 					Str("file", s.config.BootFileName).
 					Msg("Configured BIOS PXE boot")
-			} else if arch == 0x0007 || arch == 0x0009 {
+			case 0x0007, 0x0009:
 				// UEFI boot (potentially HTTP boot)
 				if s.config.BootURI != "" {
 					// Option 114 - Boot URI (UEFI HTTP boot)

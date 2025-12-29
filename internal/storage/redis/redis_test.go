@@ -39,7 +39,7 @@ func setupTestStore(t *testing.T) (*Store, *miniredis.Miniredis) {
 
 func TestUsageStore_UpsertSession(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	usageStore := store.Usage()
@@ -82,7 +82,7 @@ func TestUsageStore_UpsertSession(t *testing.T) {
 
 func TestUsageStore_ListActiveSessions(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	usageStore := store.Usage()
@@ -109,8 +109,8 @@ func TestUsageStore_ListActiveSessions(t *testing.T) {
 		Active:             false,
 	}
 
-	usageStore.UpsertSession(ctx, activeSession)
-	usageStore.UpsertSession(ctx, inactiveSession)
+	_ = usageStore.UpsertSession(ctx, activeSession)
+	_ = usageStore.UpsertSession(ctx, inactiveSession)
 
 	// List active sessions
 	sessions, err := usageStore.ListActiveSessions(ctx)
@@ -129,7 +129,7 @@ func TestUsageStore_ListActiveSessions(t *testing.T) {
 
 func TestUsageStore_IncrementDailyUsage(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	usageStore := store.Usage()
@@ -173,7 +173,7 @@ func TestUsageStore_IncrementDailyUsage(t *testing.T) {
 
 func TestUsageStore_ListDailyUsage(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	usageStore := store.Usage()
@@ -181,9 +181,9 @@ func TestUsageStore_ListDailyUsage(t *testing.T) {
 	date := "2024-01-15"
 
 	// Add multiple usage entries for same date
-	usageStore.IncrementDailyUsage(ctx, date, "device-1", "entertainment", 60)
-	usageStore.IncrementDailyUsage(ctx, date, "device-2", "educational", 120)
-	usageStore.IncrementDailyUsage(ctx, date, "device-1", "educational", 30)
+	_ = usageStore.IncrementDailyUsage(ctx, date, "device-1", "entertainment", 60)
+	_ = usageStore.IncrementDailyUsage(ctx, date, "device-2", "educational", 120)
+	_ = usageStore.IncrementDailyUsage(ctx, date, "device-1", "educational", 30)
 
 	// List all usage for date
 	usages, err := usageStore.ListDailyUsage(ctx, date)
@@ -198,7 +198,7 @@ func TestUsageStore_ListDailyUsage(t *testing.T) {
 
 func TestDHCPLeaseStore_Create(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	dhcpStore := store.DHCPLeases()
@@ -237,7 +237,7 @@ func TestDHCPLeaseStore_Create(t *testing.T) {
 
 func TestDHCPLeaseStore_GetByIP(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	dhcpStore := store.DHCPLeases()
@@ -251,7 +251,7 @@ func TestDHCPLeaseStore_GetByIP(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	dhcpStore.Create(ctx, lease)
+	_ = dhcpStore.Create(ctx, lease)
 
 	// Get by IP (secondary index)
 	retrieved, err := dhcpStore.GetByIP(ctx, lease.IP)
@@ -266,7 +266,7 @@ func TestDHCPLeaseStore_GetByIP(t *testing.T) {
 
 func TestDHCPLeaseStore_List(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	dhcpStore := store.DHCPLeases()
@@ -290,8 +290,8 @@ func TestDHCPLeaseStore_List(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	dhcpStore.Create(ctx, lease1)
-	dhcpStore.Create(ctx, lease2)
+	_ = dhcpStore.Create(ctx, lease1)
+	_ = dhcpStore.Create(ctx, lease2)
 
 	// List all leases
 	leases, err := dhcpStore.List(ctx)
@@ -306,7 +306,7 @@ func TestDHCPLeaseStore_List(t *testing.T) {
 
 func TestDHCPLeaseStore_Delete(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	dhcpStore := store.DHCPLeases()
@@ -320,7 +320,7 @@ func TestDHCPLeaseStore_Delete(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	dhcpStore.Create(ctx, lease)
+	_ = dhcpStore.Create(ctx, lease)
 
 	// Delete lease
 	err := dhcpStore.Delete(ctx, lease.MAC)
@@ -343,7 +343,7 @@ func TestDHCPLeaseStore_Delete(t *testing.T) {
 
 func TestDHCPLeaseStore_CreatePreservesCreatedAt(t *testing.T) {
 	store, _ := setupTestStore(t)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 	dhcpStore := store.DHCPLeases()
@@ -360,12 +360,12 @@ func TestDHCPLeaseStore_CreatePreservesCreatedAt(t *testing.T) {
 	}
 
 	// Create initial lease
-	dhcpStore.Create(ctx, lease)
+	_ = dhcpStore.Create(ctx, lease)
 
 	// Update lease
 	lease.Hostname = "updated-device"
 	lease.UpdatedAt = time.Now()
-	dhcpStore.Create(ctx, lease)
+	_ = dhcpStore.Create(ctx, lease)
 
 	// Verify CreatedAt was preserved
 	retrieved, err := dhcpStore.GetByMAC(ctx, lease.MAC)
