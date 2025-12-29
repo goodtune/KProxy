@@ -4,10 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/netip"
-	"sort"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/goodtune/kproxy/internal/policy/opa"
@@ -17,68 +13,25 @@ import (
 
 // UsageTracker interface for usage tracking
 type UsageTracker interface {
-	RecordActivity(deviceID, limitID string) error
-	GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*UsageStats, error)
+	RecordActivity(deviceID, category string) error
+	GetCategoryUsage(deviceID, category string) (time.Duration, error)
 }
 
-// UsageStats represents current usage statistics
-type UsageStats struct {
-	TodayUsage     time.Duration
-	RemainingToday time.Duration
-	LimitExceeded  bool
-}
-
-// Engine handles policy evaluation and enforcement
+// Engine handles policy evaluation by gathering facts and calling OPA
 type Engine struct {
-	deviceStore   storage.DeviceStore
-	profileStore  storage.ProfileStore
-	ruleStore     storage.RuleStore
-	timeRuleStore storage.TimeRuleStore
-	limitStore    storage.UsageLimitStore
-	bypassStore   storage.BypassRuleStore
-	devices       map[string]*Device
-	devicesByMAC  map[string]*Device
-	profiles      map[string]*Profile
-	bypassRules   []*BypassRule
-	globalBypass  []string
-	defaultAction Action
-	useMACAddress bool
+	usageStore    storage.UsageStore
 	usageTracker  UsageTracker
+	opaEngine     *opa.Engine
+	clock         Clock
 	logger        zerolog.Logger
-	mu            sync.RWMutex
-	clock         Clock // Clock interface for time-based policy evaluation
-
-	// OPA engine for policy evaluation
-	opaEngine *opa.Engine
 }
 
-// NewEngine creates a new policy engine
-func NewEngine(store storage.Store, globalBypass []string, defaultAction string, useMACAddress bool, opaConfig opa.Config, logger zerolog.Logger) (*Engine, error) {
+// NewEngine creates a new fact-based policy engine
+func NewEngine(usageStore storage.UsageStore, opaConfig opa.Config, logger zerolog.Logger) (*Engine, error) {
 	e := &Engine{
-		deviceStore:   store.Devices(),
-		profileStore:  store.Profiles(),
-		ruleStore:     store.Rules(),
-		timeRuleStore: store.TimeRules(),
-		limitStore:    store.UsageLimits(),
-		bypassStore:   store.BypassRules(),
-		devices:       make(map[string]*Device),
-		devicesByMAC:  make(map[string]*Device),
-		profiles:      make(map[string]*Profile),
-		bypassRules:   make([]*BypassRule, 0),
-		globalBypass:  globalBypass,
-		useMACAddress: useMACAddress,
-		clock:         RealClock{}, // Use real time by default
-		logger:        logger.With().Str("component", "policy").Logger(),
-	}
-
-	// Set default action
-	switch strings.ToUpper(defaultAction) {
-	case "ALLOW":
-		e.defaultAction = ActionAllow
-	case "BLOCK":
-		e.defaultAction = ActionBlock
-	default:
-		e.defaultAction = ActionBlock
+		usageStore: usageStore,
+		clock:      RealClock{}, // Use real time by default
+		logger:     logger.With().Str("component", "policy").Logger(),
 	}
 
 	// Initialize OPA engine
@@ -88,386 +41,179 @@ func NewEngine(store storage.Store, globalBypass []string, defaultAction string,
 	}
 	e.opaEngine = opaEngine
 
-	// Load initial data
-	if err := e.Reload(); err != nil {
-		return nil, fmt.Errorf("failed to load initial policy data: %w", err)
-	}
+	logger.Info().
+		Str("opa_source", opaConfig.Source).
+		Msg("Fact-based Policy Engine initialized")
 
 	return e, nil
 }
 
-// SetClock sets the clock for time-based policy evaluation.
-// This is primarily used for testing to inject a fixed time.
+// SetClock sets the clock for time-based policy evaluation (for testing)
 func (e *Engine) SetClock(clock Clock) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.clock = clock
-}
-
-// Reload reloads all policy data from storage
-func (e *Engine) Reload() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	// Load devices
-	if err := e.loadDevices(); err != nil {
-		return fmt.Errorf("failed to load devices: %w", err)
-	}
-
-	// Load profiles
-	if err := e.loadProfiles(); err != nil {
-		return fmt.Errorf("failed to load profiles: %w", err)
-	}
-
-	// Load bypass rules
-	if err := e.loadBypassRules(); err != nil {
-		return fmt.Errorf("failed to load bypass rules: %w", err)
-	}
-
-	return nil
-}
-
-// loadDevices loads all devices from storage
-func (e *Engine) loadDevices() error {
-	ctx := context.Background()
-	storedDevices, err := e.deviceStore.ListActive(ctx)
-	if err != nil {
-		return err
-	}
-
-	devices := make(map[string]*Device)
-	devicesByMAC := make(map[string]*Device)
-
-	for _, storedDevice := range storedDevices {
-		device := Device{
-			ID:          storedDevice.ID,
-			Name:        storedDevice.Name,
-			Identifiers: storedDevice.Identifiers,
-			ProfileID:   storedDevice.ProfileID,
-			Active:      storedDevice.Active,
-			CreatedAt:   storedDevice.CreatedAt,
-			UpdatedAt:   storedDevice.UpdatedAt,
-		}
-
-		devices[device.ID] = &device
-
-		// Index by MAC address
-		for _, identifier := range device.Identifiers {
-			if isMACAddress(identifier) {
-				devicesByMAC[strings.ToLower(identifier)] = &device
-			}
-		}
-
-		e.logger.Info().
-			Str("device_id", device.ID).
-			Str("device_name", device.Name).
-			Strs("identifiers", device.Identifiers).
-			Str("profile_id", device.ProfileID).
-			Msg("Loaded device")
-	}
-
-	e.devices = devices
-	e.devicesByMAC = devicesByMAC
-
-	e.logger.Info().
-		Int("total_devices", len(devices)).
-		Int("devices_with_mac", len(devicesByMAC)).
-		Msg("Device loading complete")
-
-	return nil
-}
-
-// loadProfiles loads all profiles with their rules
-func (e *Engine) loadProfiles() error {
-	ctx := context.Background()
-	storedProfiles, err := e.profileStore.List(ctx)
-	if err != nil {
-		return err
-	}
-
-	profiles := make(map[string]*Profile)
-
-	for _, storedProfile := range storedProfiles {
-		profile := Profile{
-			ID:           storedProfile.ID,
-			Name:         storedProfile.Name,
-			DefaultAllow: storedProfile.DefaultAllow,
-			CreatedAt:    storedProfile.CreatedAt,
-			UpdatedAt:    storedProfile.UpdatedAt,
-		}
-
-		// Load rules for this profile
-		if err := e.loadProfileRules(&profile); err != nil {
-			return fmt.Errorf("failed to load rules for profile %s: %w", profile.ID, err)
-		}
-
-		// Load time rules
-		if err := e.loadProfileTimeRules(&profile); err != nil {
-			return fmt.Errorf("failed to load time rules for profile %s: %w", profile.ID, err)
-		}
-
-		// Load usage limits
-		if err := e.loadProfileUsageLimits(&profile); err != nil {
-			return fmt.Errorf("failed to load usage limits for profile %s: %w", profile.ID, err)
-		}
-
-		profiles[profile.ID] = &profile
-	}
-
-	e.profiles = profiles
-	return nil
-}
-
-// loadProfileRules loads rules for a specific profile
-func (e *Engine) loadProfileRules(profile *Profile) error {
-	ctx := context.Background()
-	storedRules, err := e.ruleStore.ListByProfile(ctx, profile.ID)
-	if err != nil {
-		return err
-	}
-
-	rules := make([]Rule, 0, len(storedRules))
-	for _, storedRule := range storedRules {
-		rule := Rule{
-			ID:          storedRule.ID,
-			Domain:      storedRule.Domain,
-			Paths:       storedRule.Paths,
-			Action:      Action(storedRule.Action), // Convert from storage.Action to policy.Action
-			Priority:    storedRule.Priority,
-			Category:    storedRule.Category,
-			InjectTimer: storedRule.InjectTimer,
-		}
-		rules = append(rules, rule)
-
-		e.logger.Info().
-			Str("profile_id", profile.ID).
-			Str("rule_id", rule.ID).
-			Str("domain", rule.Domain).
-			Str("action", string(rule.Action)).
-			Int("priority", rule.Priority).
-			Msg("Loaded rule")
-	}
-
-	sort.Slice(rules, func(i, j int) bool {
-		return rules[i].Priority > rules[j].Priority
-	})
-
-	profile.Rules = rules
-
-	e.logger.Info().
-		Str("profile_id", profile.ID).
-		Str("profile_name", profile.Name).
-		Int("total_rules", len(rules)).
-		Bool("default_allow", profile.DefaultAllow).
-		Msg("Profile rules loaded")
-
-	return nil
-}
-
-// loadProfileTimeRules loads time rules for a specific profile
-func (e *Engine) loadProfileTimeRules(profile *Profile) error {
-	ctx := context.Background()
-	storedRules, err := e.timeRuleStore.ListByProfile(ctx, profile.ID)
-	if err != nil {
-		return err
-	}
-
-	timeRules := make([]TimeRule, 0, len(storedRules))
-	for _, storedRule := range storedRules {
-		timeRules = append(timeRules, TimeRule{
-			ID:         storedRule.ID,
-			DaysOfWeek: storedRule.DaysOfWeek,
-			StartTime:  storedRule.StartTime,
-			EndTime:    storedRule.EndTime,
-			RuleIDs:    storedRule.RuleIDs,
-		})
-	}
-
-	profile.TimeRules = timeRules
-	return nil
-}
-
-// loadProfileUsageLimits loads usage limits for a specific profile
-func (e *Engine) loadProfileUsageLimits(profile *Profile) error {
-	ctx := context.Background()
-	storedLimits, err := e.limitStore.ListByProfile(ctx, profile.ID)
-	if err != nil {
-		return err
-	}
-
-	usageLimits := make([]UsageLimit, 0, len(storedLimits))
-	for _, storedLimit := range storedLimits {
-		usageLimits = append(usageLimits, UsageLimit{
-			ID:           storedLimit.ID,
-			Category:     storedLimit.Category,
-			Domains:      storedLimit.Domains,
-			DailyMinutes: storedLimit.DailyMinutes,
-			ResetTime:    storedLimit.ResetTime,
-			InjectTimer:  storedLimit.InjectTimer,
-		})
-	}
-
-	profile.UsageLimits = usageLimits
-	return nil
-}
-
-// loadBypassRules loads all bypass rules
-func (e *Engine) loadBypassRules() error {
-	ctx := context.Background()
-	storedRules, err := e.bypassStore.ListEnabled(ctx)
-	if err != nil {
-		return err
-	}
-
-	bypassRules := make([]*BypassRule, 0, len(storedRules))
-	for _, storedRule := range storedRules {
-		rule := BypassRule{
-			ID:        storedRule.ID,
-			Domain:    storedRule.Domain,
-			Reason:    storedRule.Reason,
-			Enabled:   storedRule.Enabled,
-			DeviceIDs: storedRule.DeviceIDs,
-		}
-		bypassRules = append(bypassRules, &rule)
-
-		e.logger.Info().
-			Str("rule_id", rule.ID).
-			Str("domain", rule.Domain).
-			Strs("device_ids", rule.DeviceIDs).
-			Str("reason", rule.Reason).
-			Msg("Loaded bypass rule")
-	}
-
-	e.bypassRules = bypassRules
-
-	e.logger.Info().
-		Int("total_bypass_rules", len(bypassRules)).
-		Msg("Bypass rule loading complete")
-
-	return nil
-}
-
-// IdentifyDevice identifies a device by IP address or MAC address
-func (e *Engine) IdentifyDevice(clientIP net.IP, clientMAC net.HardwareAddr) *Device {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-
-	return e.identifyDevice(clientIP, clientMAC)
-}
-
-// identifyDevice is the internal implementation (requires lock)
-func (e *Engine) identifyDevice(clientIP net.IP, clientMAC net.HardwareAddr) *Device {
-	clientIPStr := clientIP.String()
-
-	e.logger.Debug().
-		Str("client_ip", clientIPStr).
-		Str("client_mac", func() string {
-			if clientMAC != nil {
-				return clientMAC.String()
-			}
-			return "nil"
-		}()).
-		Int("total_devices", len(e.devices)).
-		Msg("Attempting to identify device")
-
-	// Try MAC address first (most reliable)
-	if clientMAC != nil && e.useMACAddress {
-		if device := e.devicesByMAC[strings.ToLower(clientMAC.String())]; device != nil {
-			e.logger.Debug().
-				Str("device_id", device.ID).
-				Str("device_name", device.Name).
-				Str("method", "mac").
-				Msg("Device identified")
-			return device
-		}
-	}
-
-	// Fall back to IP address
-	for _, device := range e.devices {
-		for _, identifier := range device.Identifiers {
-			e.logger.Debug().
-				Str("client_ip", clientIPStr).
-				Str("identifier", identifier).
-				Str("device_id", device.ID).
-				Msg("Comparing IP identifier")
-
-			// Check if it's a CIDR range
-			if strings.Contains(identifier, "/") {
-				if ipRange, err := netip.ParsePrefix(identifier); err == nil {
-					clientAddr, err := netip.ParseAddr(clientIPStr)
-					if err == nil && ipRange.Contains(clientAddr) {
-						e.logger.Info().
-							Str("device_id", device.ID).
-							Str("device_name", device.Name).
-							Str("client_ip", clientIPStr).
-							Str("matched_cidr", identifier).
-							Str("method", "cidr").
-							Msg("Device identified")
-						return device
-					}
-				}
-			} else if identifier == clientIPStr {
-				e.logger.Info().
-					Str("device_id", device.ID).
-					Str("device_name", device.Name).
-					Str("client_ip", clientIPStr).
-					Str("matched_ip", identifier).
-					Str("method", "ip").
-					Msg("Device identified")
-				return device
-			}
-		}
-	}
-
-	e.logger.Info().
-		Str("client_ip", clientIPStr).
-		Msg("Device not identified - no match found")
-
-	return nil
 }
 
 // SetUsageTracker sets the usage tracker for the policy engine
 func (e *Engine) SetUsageTracker(tracker UsageTracker) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.usageTracker = tracker
 }
 
-// Helper functions
+// GetDNSAction determines the DNS action for a query using OPA
+// Just gathers facts and asks OPA
+func (e *Engine) GetDNSAction(clientIP net.IP, clientMAC net.HardwareAddr, domain string) DNSAction {
+	// Build facts
+	facts := e.buildDNSFacts(clientIP, clientMAC, domain)
 
-func isMACAddress(s string) bool {
-	_, err := net.ParseMAC(s)
-	return err == nil
+	// Evaluate with OPA
+	ctx := context.Background()
+	action, err := e.opaEngine.EvaluateDNS(ctx, facts)
+	if err != nil {
+		e.logger.Error().Err(err).Msg("OPA DNS evaluation failed, falling back to intercept")
+		return DNSActionIntercept
+	}
+
+	// Convert string action to DNSAction
+	switch action {
+	case "BYPASS":
+		return DNSActionBypass
+	case "BLOCK":
+		return DNSActionBlock
+	case "INTERCEPT":
+		return DNSActionIntercept
+	default:
+		e.logger.Warn().Str("action", action).Msg("Unknown DNS action from OPA, defaulting to intercept")
+		return DNSActionIntercept
+	}
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
+// Evaluate evaluates a proxy request against the policy using OPA
+// Just gathers facts (including current usage) and asks OPA
+func (e *Engine) Evaluate(req *ProxyRequest) *PolicyDecision {
+	// Build facts
+	facts := e.buildProxyFacts(req)
+
+	// Evaluate with OPA
+	ctx := context.Background()
+	opaDecision, err := e.opaEngine.EvaluateProxy(ctx, facts)
+	if err != nil {
+		e.logger.Error().Err(err).Msg("OPA proxy evaluation failed, falling back to block")
+		return &PolicyDecision{
+			Action: ActionBlock,
+			Reason: fmt.Sprintf("OPA evaluation error: %v", err),
 		}
 	}
-	return false
+
+	// Convert OPA decision to PolicyDecision
+	decision := &PolicyDecision{
+		Action:        Action(opaDecision.Action),
+		Reason:        opaDecision.Reason,
+		BlockPage:     opaDecision.BlockPage,
+		MatchedRuleID: opaDecision.MatchedRuleID,
+		Category:      opaDecision.Category,
+		InjectTimer:   opaDecision.InjectTimer,
+		TimeRemaining: time.Duration(opaDecision.TimeRemainingMinutes) * time.Minute,
+		UsageLimitID:  opaDecision.UsageLimitID,
+	}
+
+	// If decision is ALLOW and we have a category with usage tracking, record activity
+	if decision.Action == ActionAllow && e.usageTracker != nil && decision.Category != "" {
+		// Get device ID from OPA (we'll need to query OPA for this)
+		// For now, use a composite key of IP+MAC
+		deviceID := e.makeDeviceKey(req.ClientIP, req.ClientMAC)
+		_ = e.usageTracker.RecordActivity(deviceID, decision.Category)
+	}
+
+	return decision
 }
 
-func containsInt(slice []int, item int) bool {
-	for _, i := range slice {
-		if i == item {
-			return true
+// buildDNSFacts gathers facts for DNS evaluation
+func (e *Engine) buildDNSFacts(clientIP net.IP, clientMAC net.HardwareAddr, domain string) map[string]interface{} {
+	clientMACStr := ""
+	if clientMAC != nil {
+		clientMACStr = clientMAC.String()
+	}
+
+	return map[string]interface{}{
+		"client_ip":  clientIP.String(),
+		"client_mac": clientMACStr,
+		"domain":     domain,
+	}
+}
+
+// buildProxyFacts gathers facts for proxy request evaluation
+func (e *Engine) buildProxyFacts(req *ProxyRequest) map[string]interface{} {
+	clientMACStr := ""
+	if req.ClientMAC != nil {
+		clientMACStr = req.ClientMAC.String()
+	}
+
+	// Get current time info from clock
+	now := e.clock.Now()
+	currentTime := map[string]interface{}{
+		"day_of_week": int(now.Weekday()),
+		"hour":        now.Hour(),
+		"minute":      now.Minute(),
+	}
+
+	// Gather usage facts from database
+	usageFacts := e.gatherUsageFacts(req.ClientIP, req.ClientMAC)
+
+	return map[string]interface{}{
+		"client_ip":  req.ClientIP.String(),
+		"client_mac": clientMACStr,
+		"host":       req.Host,
+		"path":       req.Path,
+		"method":     req.Method,
+		"time":       currentTime,
+		"usage":      usageFacts,
+	}
+}
+
+// gatherUsageFacts queries the database for current usage
+func (e *Engine) gatherUsageFacts(clientIP net.IP, clientMAC net.HardwareAddr) map[string]interface{} {
+	if e.usageTracker == nil {
+		return map[string]interface{}{}
+	}
+
+	// Create device key
+	deviceID := e.makeDeviceKey(clientIP, clientMAC)
+
+	// Query usage for common categories
+	// In the future, this could be dynamically determined from policy
+	categories := []string{"educational", "entertainment", "social-media", "gaming"}
+
+	usageFacts := make(map[string]interface{})
+	for _, category := range categories {
+		duration, err := e.usageTracker.GetCategoryUsage(deviceID, category)
+		if err != nil {
+			// No usage data yet, default to 0
+			usageFacts[category] = map[string]interface{}{
+				"today_minutes": 0,
+			}
+		} else {
+			usageFacts[category] = map[string]interface{}{
+				"today_minutes": int(duration.Minutes()),
+			}
 		}
 	}
-	return false
+
+	return usageFacts
 }
 
-func parseTimeOfDay(timeStr string) (int, error) {
-	parts := strings.Split(timeStr, ":")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid time format: %s", timeStr)
+// makeDeviceKey creates a composite key for device identification
+// This is temporary - ideally OPA should handle device identification
+func (e *Engine) makeDeviceKey(clientIP net.IP, clientMAC net.HardwareAddr) string {
+	if clientMAC != nil {
+		return clientMAC.String()
 	}
+	return clientIP.String()
+}
 
-	var hour, minute int
-	if _, err := fmt.Sscanf(timeStr, "%d:%d", &hour, &minute); err != nil {
-		return 0, err
-	}
-
-	return hour*60 + minute, nil
+// Reload reloads the OPA policies
+// No longer needs to load database config - just reload OPA policies
+func (e *Engine) Reload() error {
+	// For filesystem policies: OPA will reload on file changes
+	// For remote policies: Can implement periodic re-fetch here
+	e.logger.Info().Msg("Policy reload requested (OPA policies are reloaded automatically)")
+	return nil
 }

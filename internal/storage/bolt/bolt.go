@@ -15,12 +15,8 @@ import (
 )
 
 const (
-	bucketDevices     = "devices"
-	bucketProfiles    = "profiles"
-	bucketRules       = "rules"
-	bucketTimeRules   = "time_rules"
-	bucketUsageLimits = "usage_limits"
-	bucketBypassRules = "bypass_rules"
+	// Removed: bucketDevices, bucketProfiles, bucketRules, bucketTimeRules, bucketUsageLimits, bucketBypassRules
+	// Configuration now in OPA policies
 	bucketSessions    = "usage_sessions"
 	bucketDailyUsage  = "usage_daily"
 	bucketLogsHTTP    = "logs_http"
@@ -71,12 +67,7 @@ func ensureDir(path string) error {
 func (s *Store) ensureBuckets() error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		buckets := [][]byte{
-			[]byte(bucketDevices),
-			[]byte(bucketProfiles),
-			[]byte(bucketRules),
-			[]byte(bucketTimeRules),
-			[]byte(bucketUsageLimits),
-			[]byte(bucketBypassRules),
+			// Removed config buckets: devices, profiles, rules, time_rules, usage_limits, bypass_rules
 			[]byte(bucketSessions),
 			[]byte(bucketDailyUsage),
 			[]byte(bucketLogsHTTP),
@@ -112,23 +103,8 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// Devices returns the device store.
-func (s *Store) Devices() storage.DeviceStore { return &deviceStore{db: s.db} }
-
-// Profiles returns the profile store.
-func (s *Store) Profiles() storage.ProfileStore { return &profileStore{db: s.db} }
-
-// Rules returns the rule store.
-func (s *Store) Rules() storage.RuleStore { return &ruleStore{db: s.db} }
-
-// TimeRules returns the time rule store.
-func (s *Store) TimeRules() storage.TimeRuleStore { return &timeRuleStore{db: s.db} }
-
-// UsageLimits returns the usage limit store.
-func (s *Store) UsageLimits() storage.UsageLimitStore { return &usageLimitStore{db: s.db} }
-
-// BypassRules returns the bypass rule store.
-func (s *Store) BypassRules() storage.BypassRuleStore { return &bypassRuleStore{db: s.db} }
+// REMOVED: Devices, Profiles, Rules, TimeRules, UsageLimits, BypassRules stores
+// Configuration now managed in OPA policies
 
 // Usage returns the usage store.
 func (s *Store) Usage() storage.UsageStore { return &usageStore{db: s.db} }

@@ -106,12 +106,7 @@ func main() {
 
 	logger.Info().Msg("Certificate Authority initialized")
 
-	// Initialize Policy Engine
-	defaultAction := cfg.Policy.DefaultAction
-	if defaultAction == "" {
-		defaultAction = "block"
-	}
-
+	// Initialize Policy Engine (fact-based, no config loading)
 	// Build OPA configuration
 	opaConfig := opa.Config{
 		Source:      cfg.Policy.OPAPolicySource,
@@ -122,10 +117,7 @@ func main() {
 	}
 
 	policyEngine, err := policy.NewEngine(
-		store,
-		cfg.DNS.GlobalBypass,
-		defaultAction,
-		cfg.Policy.UseMACAddress,
+		store.Usage(), // Only need usage store for facts
 		opaConfig,
 		logger,
 	)
@@ -135,7 +127,7 @@ func main() {
 
 	logger.Info().
 		Str("opa_source", opaConfig.Source).
-		Msg("Policy Engine initialized")
+		Msg("Fact-based Policy Engine initialized (configuration in OPA policies)")
 
 	// Initialize Usage Tracker
 	usageTracker := usage.NewTracker(

@@ -105,131 +105,85 @@ func (v *SystemViews) GetConfig(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, config)
 }
 
-// Export returns a complete dump of all system configuration.
-// This includes devices, profiles, rules (all types), and system metadata.
+// Export returns operational data and system metadata.
+// Note: Device/profile/rule configuration moved to OPA policies.
 func (v *SystemViews) Export(ctx *gin.Context) {
-	v.logger.Info().Msg("System configuration export requested")
+	v.logger.Info().Msg("System export requested")
 
-	// Fetch all devices
-	devices, err := v.store.Devices().List(ctx.Request.Context())
+	// Fetch admin users (without password hashes)
+	adminUsers, err := v.store.AdminUsers().List(ctx.Request.Context())
 	if err != nil {
-		v.logger.Error().Err(err).Msg("Failed to fetch devices")
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "server_error",
-			"message": "Failed to export devices: " + err.Error(),
-		})
-		return
+		v.logger.Error().Err(err).Msg("Failed to fetch admin users")
+		adminUsers = []storage.AdminUser{}
 	}
 
-	// Fetch all profiles
-	profiles, err := v.store.Profiles().List(ctx.Request.Context())
+	// Redact password hashes
+	var sanitizedUsers []gin.H
+	for _, user := range adminUsers {
+		sanitizedUsers = append(sanitizedUsers, gin.H{
+			"id":         user.ID,
+			"username":   user.Username,
+			"created_at": user.CreatedAt,
+			"updated_at": user.UpdatedAt,
+			"last_login": user.LastLogin,
+		})
+	}
+
+	// Fetch DHCP leases
+	dhcpLeases, err := v.store.DHCPLeases().List(ctx.Request.Context())
 	if err != nil {
-		v.logger.Error().Err(err).Msg("Failed to fetch profiles")
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "server_error",
-			"message": "Failed to export profiles: " + err.Error(),
-		})
-		return
+		v.logger.Error().Err(err).Msg("Failed to fetch DHCP leases")
+		dhcpLeases = []storage.DHCPLease{}
 	}
 
-	// Fetch all regular rules
-	rules, err := v.store.Rules().ListAll(ctx.Request.Context())
+	// Fetch active sessions
+	activeSessions, err := v.store.Usage().ListActiveSessions(ctx.Request.Context())
 	if err != nil {
-		v.logger.Error().Err(err).Msg("Failed to fetch rules")
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "server_error",
-			"message": "Failed to export rules: " + err.Error(),
-		})
-		return
-	}
-
-	// Fetch time rules for all profiles
-	var timeRules []storage.TimeRule
-	for _, profile := range profiles {
-		tr, err := v.store.TimeRules().ListByProfile(ctx.Request.Context(), profile.ID)
-		if err != nil {
-			v.logger.Error().Err(err).Str("profileID", profile.ID).Msg("Failed to fetch time rules")
-			continue
-		}
-		timeRules = append(timeRules, tr...)
-	}
-
-	// Fetch usage limits for all profiles
-	var usageLimits []storage.UsageLimit
-	for _, profile := range profiles {
-		limits, err := v.store.UsageLimits().ListByProfile(ctx.Request.Context(), profile.ID)
-		if err != nil {
-			v.logger.Error().Err(err).Str("profileID", profile.ID).Msg("Failed to fetch usage limits")
-			continue
-		}
-		usageLimits = append(usageLimits, limits...)
-	}
-
-	// Fetch all bypass rules
-	bypassRules, err := v.store.BypassRules().List(ctx.Request.Context())
-	if err != nil {
-		v.logger.Error().Err(err).Msg("Failed to fetch bypass rules")
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "server_error",
-			"message": "Failed to export bypass rules: " + err.Error(),
-		})
-		return
+		v.logger.Error().Err(err).Msg("Failed to fetch active sessions")
+		activeSessions = []storage.UsageSession{}
 	}
 
 	// Build export response
 	export := gin.H{
 		"exported_at": time.Now(),
-		"version":     "1.0",
+		"version":     "2.0",
 		"system": gin.H{
 			"uptime":        time.Since(v.startTime).String(),
 			"go_version":    runtime.Version(),
 			"num_cpu":       runtime.NumCPU(),
 			"num_goroutine": runtime.NumGoroutine(),
 		},
-		"data": gin.H{
-			"devices": gin.H{
-				"count": len(devices),
-				"items": devices,
+		"operational_data": gin.H{
+			"admin_users": gin.H{
+				"count": len(sanitizedUsers),
+				"items": sanitizedUsers,
 			},
-			"profiles": gin.H{
-				"count": len(profiles),
-				"items": profiles,
+			"dhcp_leases": gin.H{
+				"count": len(dhcpLeases),
+				"items": dhcpLeases,
 			},
-			"rules": gin.H{
-				"count": len(rules),
-				"items": rules,
-			},
-			"time_rules": gin.H{
-				"count": len(timeRules),
-				"items": timeRules,
-			},
-			"usage_limits": gin.H{
-				"count": len(usageLimits),
-				"items": usageLimits,
-			},
-			"bypass_rules": gin.H{
-				"count": len(bypassRules),
-				"items": bypassRules,
+			"active_sessions": gin.H{
+				"count": len(activeSessions),
+				"items": activeSessions,
 			},
 		},
+		"configuration": gin.H{
+			"message": "Configuration is now managed via OPA policies",
+			"location": "policies/config.rego",
+			"note": "Edit OPA policy files to configure devices, profiles, rules, usage limits, and bypass domains",
+		},
 		"summary": gin.H{
-			"total_devices":      len(devices),
-			"total_profiles":     len(profiles),
-			"total_rules":        len(rules),
-			"total_time_rules":   len(timeRules),
-			"total_usage_limits": len(usageLimits),
-			"total_bypass_rules": len(bypassRules),
+			"admin_users_count":     len(sanitizedUsers),
+			"dhcp_leases_count":     len(dhcpLeases),
+			"active_sessions_count": len(activeSessions),
 		},
 	}
 
 	v.logger.Info().
-		Int("devices", len(devices)).
-		Int("profiles", len(profiles)).
-		Int("rules", len(rules)).
-		Int("time_rules", len(timeRules)).
-		Int("usage_limits", len(usageLimits)).
-		Int("bypass_rules", len(bypassRules)).
-		Msg("System configuration exported successfully")
+		Int("admin_users", len(sanitizedUsers)).
+		Int("dhcp_leases", len(dhcpLeases)).
+		Int("active_sessions", len(activeSessions)).
+		Msg("System export completed successfully")
 
 	ctx.JSON(http.StatusOK, export)
 }

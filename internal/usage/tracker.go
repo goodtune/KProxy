@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/metrics"
-	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
@@ -180,13 +179,13 @@ func (t *Tracker) GetTodayUsage(deviceID, limitID string, resetTime time.Time) (
 }
 
 // GetUsageStats returns current usage statistics for a device and limit
-func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*policy.UsageStats, error) {
+func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Duration, resetTime time.Time) (*UsageStats, error) {
 	todayUsage, err := t.GetTodayUsage(deviceID, limitID, resetTime)
 	if err != nil {
 		return nil, err
 	}
 
-	stats := &policy.UsageStats{
+	stats := &UsageStats{
 		TodayUsage:     todayUsage,
 		RemainingToday: dailyLimit - todayUsage,
 		LimitExceeded:  todayUsage >= dailyLimit,
@@ -197,6 +196,14 @@ func (t *Tracker) GetUsageStats(deviceID, limitID string, dailyLimit time.Durati
 	}
 
 	return stats, nil
+}
+
+// GetCategoryUsage returns the total usage for a category today (category = limitID)
+// This is a simplified version that assumes daily reset at midnight
+func (t *Tracker) GetCategoryUsage(deviceID, category string) (time.Duration, error) {
+	// Use midnight as reset time (simplified)
+	resetTime := time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC)
+	return t.GetTodayUsage(deviceID, category, resetTime)
 }
 
 // StopSession manually stops a session

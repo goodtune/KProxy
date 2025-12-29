@@ -40,12 +40,10 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 
 	// Initialize view handlers
 	authViews := NewAuthViews(deps.Auth, deps.Logger)
-	deviceViews := NewDeviceViews(deps.Store.Devices(), deps.Logger)
-	profileViews := NewProfileViews(deps.Store.Profiles(), deps.Logger)
-	rulesViews := NewRulesViews(deps.Store.Rules(), deps.Store.TimeRules(), deps.Store.UsageLimits(), deps.Store.BypassRules(), deps.PolicyEngine, deps.Logger)
+	// Note: Device/profile/rule views removed - config now in OPA policies
 	logsViews := NewLogsViews(deps.Store.Logs(), deps.Logger)
 	sessionsViews := NewSessionsViews(deps.Store.Usage(), deps.Logger)
-	statsViews := NewStatsViews(deps.Store.Devices(), deps.Store.Profiles(), deps.Store.Rules(), deps.Store.Logs(), deps.Store.Usage(), deps.Logger)
+	statsViews := NewStatsViews(deps.Store.Logs(), deps.Store.Usage(), deps.Logger)
 	systemViews := NewSystemViews(deps.Store, deps.PolicyEngine, deps.Logger)
 
 	// Health check (public)
@@ -72,7 +70,11 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 		api.GET("/auth/me", authViews.Me)
 		api.POST("/auth/change-password", authViews.ChangePassword)
 
-		// Device management
+		// Note: Device/profile/rule management endpoints removed
+		// Configuration now managed via OPA policies (policies/config.rego)
+		// Edit policies/config.rego to configure devices, profiles, rules, usage limits, and bypass domains
+
+		/* REMOVED: Device management - config now in OPA policies
 		devices := api.Group("/devices")
 		{
 			devices.GET("", deviceViews.List)
@@ -81,8 +83,9 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			devices.PUT("/:id", deviceViews.Update)
 			devices.DELETE("/:id", deviceViews.Delete)
 		}
+		*/
 
-		// Profile management
+		/* REMOVED: Profile management - config now in OPA policies
 		profiles := api.Group("/profiles")
 		{
 			profiles.GET("", profileViews.List)
@@ -91,14 +94,14 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			profiles.PUT("/:id", profileViews.Update)
 			profiles.DELETE("/:id", profileViews.Delete)
 		}
+		*/
 
-		// Rules management (global - list all rules)
+		/* REMOVED: Rules management - config now in OPA policies
 		rules := api.Group("/rules")
 		{
 			rules.GET("", rulesViews.ListAllRules)
 		}
 
-		// Rules management (nested under profiles)
 		profileRules := api.Group("/profiles/:id")
 		{
 			// Regular rules
@@ -123,7 +126,6 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			profileRules.DELETE("/usage-limits/:limitID", rulesViews.DeleteUsageLimit)
 		}
 
-		// Bypass rules (global)
 		bypassRules := api.Group("/bypass-rules")
 		{
 			bypassRules.GET("", rulesViews.ListBypassRules)
@@ -132,6 +134,7 @@ func SetupGorfRoutes(r *gin.Engine, deps *AdminDeps) {
 			bypassRules.PUT("/:id", rulesViews.UpdateBypassRule)
 			bypassRules.DELETE("/:id", rulesViews.DeleteBypassRule)
 		}
+		*/
 
 		// Logs management
 		logs := api.Group("/logs")

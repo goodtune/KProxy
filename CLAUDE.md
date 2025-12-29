@@ -4,7 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KProxy is a transparent HTTP/HTTPS interception proxy with embedded DNS server for home network parental controls. It combines DNS-level routing decisions with proxy-level policy enforcement, dynamic TLS certificate generation, and usage tracking.
+KProxy is a transparent HTTP/HTTPS interception proxy with embedded DNS server for home network parental controls. It uses **fact-based Open Policy Agent (OPA)** evaluation where:
+- **Facts** are gathered from requests (IP, MAC, domain, time, current usage)
+- **Policies** are declarative Rego code defining access rules
+- **Configuration** lives in OPA policies, not database
+
+## Architecture Philosophy: Facts → OPA → Decision
+
+KProxy follows a clean separation of concerns:
+1. **Go code gathers facts**: Client IP/MAC, domain, time, current usage from database
+2. **OPA evaluates policies**: Rego policies define devices, profiles, rules, and make decisions
+3. **Go code enforces decisions**: Block, allow, inject timer, log requests
+
+**What's in the database:**
+- Operational data only: `request_logs`, `dns_logs`, `daily_usage`, `usage_sessions`
+- Admin authentication: `admin_users`
+- Network state: `dhcp_leases`
+
+**What's NOT in the database:**
+- ~~Devices, Profiles, Rules, TimeRules, UsageLimits, BypassRules~~ (moved to OPA policies)
 
 ## Build & Development Commands
 
@@ -19,6 +37,7 @@ make clean          # Remove build artifacts
 ```bash
 make test           # Run all tests with race detection and coverage
 make lint           # Run golangci-lint (requires golangci-lint installed)
+opa test policies/  # Test OPA policies
 ```
 
 ### Running
@@ -32,327 +51,381 @@ sudo ./bin/kproxy -config /etc/kproxy/config.yaml  # Run with custom config
 sudo make generate-ca    # Generate CA certificates using scripts/generate-ca.sh
 ```
 
-### Deployment
+## Policy Configuration
+
+All access control configuration is defined in **OPA Rego policies** in the `policies/` directory:
+
+### Policy Files
+
+- **`config.rego`**: Central configuration
+  - Device definitions (MAC addresses, IPs, CIDR ranges)
+  - Profile configurations (time restrictions, usage limits)
+  - Access rules (allow/block domains by category)
+  - Global bypass domains
+
+- **`device.rego`**: Device identification logic
+  - Identifies devices from client IP/MAC facts
+  - Priority: MAC → Exact IP → CIDR range
+
+- **`dns.rego`**: DNS action decisions
+  - Determines BYPASS, INTERCEPT, or BLOCK
+  - Checks global bypass domains
+
+- **`proxy.rego`**: Proxy request evaluation
+  - Main decision logic: ALLOW or BLOCK
+  - Checks time restrictions
+  - Evaluates rules by priority
+  - Enforces usage limits
+
+- **`helpers.rego`**: Utility functions
+  - Domain matching (exact, wildcard, suffix)
+  - CIDR matching
+  - Time window checking
+
+### Example Configuration
+
+Edit `policies/config.rego` to configure your network:
+
+```rego
+devices := {
+    "kids-ipad": {
+        "name": "Kids iPad",
+        "identifiers": ["aa:bb:cc:dd:ee:ff", "192.168.1.100"],
+        "profile": "child"
+    },
+    "parents-laptop": {
+        "name": "Parents Laptop",
+        "identifiers": ["bb:cc:dd:ee:ff:00"],
+        "profile": "adult"
+    }
+}
+
+profiles := {
+    "child": {
+        "time_restrictions": {
+            "weekday": {
+                "days": [1, 2, 3, 4, 5],
+                "start_hour": 15, "end_hour": 20
+            }
+        },
+        "rules": [
+            {"id": "allow-educational", "domains": ["*.khanacademy.org"], "action": "allow"},
+            {"id": "block-social", "domains": ["*.tiktok.com"], "action": "block"}
+        ],
+        "usage_limits": {
+            "entertainment": {"daily_minutes": 60, "domains": ["*.youtube.com"]}
+        },
+        "default_action": "block"
+    }
+}
+```
+
+### Testing Policies
+
 ```bash
-make install        # Install binary and systemd service
-make docker         # Build Docker image
+# Test policies locally
+opa test policies/ -v
+
+# Evaluate a query
+opa eval -d policies/ -i input.json "data.kproxy.dns.action"
+```
+
+### Remote Policies
+
+KProxy supports loading policies from remote URLs for centralized management:
+
+```yaml
+policy:
+  opa_policy_source: remote
+  opa_policy_urls:
+    - https://policy-server.example.com/policies/config.rego
+    - https://policy-server.example.com/policies/device.rego
+    - https://policy-server.example.com/policies/dns.rego
+    - https://policy-server.example.com/policies/proxy.rego
+    - https://policy-server.example.com/policies/helpers.rego
 ```
 
 ## Architecture Overview
-
-KProxy is a multi-component system initialized and orchestrated from `cmd/kproxy/main.go`. Understanding component dependencies is critical:
 
 ### Component Dependency Flow
 
 ```
 main.go
   │
-  ├─> Database (SQLite) - initialized first
-  │     └─> Runs migrations on startup (internal/database/db.go)
+  ├─> Database (BoltDB) - operational data only
+  │     └─> Tables: usage_sessions, daily_usage, request_logs, dns_logs, admin_users, dhcp_leases
   │
   ├─> Certificate Authority (CA)
   │     └─> Loads root & intermediate certs for dynamic TLS generation
   │
-  ├─> Policy Engine - depends on Database
-  │     ├─> Loads devices, profiles, rules, time rules, usage limits, bypass rules
-  │     ├─> Provides device identification (IP/MAC)
-  │     └─> Evaluates access decisions
+  ├─> Policy Engine - fact-based OPA evaluation
+  │     ├─> OPA Engine (loads Rego policies from filesystem or remote)
+  │     ├─> Gathers facts: IP, MAC, domain, time, current usage
+  │     └─> Returns decisions: ALLOW/BLOCK/BYPASS with metadata
   │
-  ├─> Usage Tracker - depends on Database
-  │     ├─> Tracks active sessions with inactivity timeout
-  │     ├─> Accumulates usage time per device/limit
-  │     └─> Connected to Policy Engine via SetUsageTracker()
+  ├─> Usage Tracker - tracks usage by category
+  │     ├─> Records activity sessions
+  │     ├─> Queries current usage for policy evaluation
+  │     └─> Connected to Policy Engine for usage facts
   │
-  ├─> Reset Scheduler - depends on Database
-  │     └─> Runs daily reset of usage counters at configured time
+  ├─> DNS Server - DNS-level routing decisions
+  │     ├─> Gathers facts: client IP, domain
+  │     ├─> Calls OPA for BYPASS/INTERCEPT/BLOCK decision
+  │     └─> Returns proxy IP for intercepted domains
   │
-  ├─> DNS Server - depends on Policy Engine & Database
-  │     ├─> Decides INTERCEPT/BYPASS/BLOCK at DNS level
-  │     ├─> Returns proxy IP for intercepted domains
-  │     └─> Forwards to upstream for bypassed domains
+  ├─> Proxy Server - HTTP/HTTPS request filtering
+  │     ├─> Gathers facts: IP, MAC, host, path, time, usage
+  │     ├─> Calls OPA for ALLOW/BLOCK decision
+  │     └─> Generates TLS certificates, logs requests
   │
-  ├─> Proxy Server - depends on Policy Engine, CA, & Database
-  │     ├─> Handles HTTP (port 80) and HTTPS (port 443) traffic
-  │     ├─> Generates TLS certificates on-the-fly via CA
-  │     ├─> Evaluates requests against policy rules
-  │     └─> Logs all requests to database
-  │
-  └─> Metrics Server
-        └─> Exposes Prometheus metrics on /metrics endpoint
+  └─> Admin API - management interface
+        └─> Read-only access to logs, stats (no policy CRUD)
 ```
 
 ### Critical Design Patterns
 
-1. **Two-Stage Filtering**: DNS Server makes intercept/bypass decision first, then Proxy Server applies detailed policy rules on intercepted traffic.
-
-2. **Policy Engine with OPA**: Both DNS and Proxy servers depend on the Policy Engine for device identification and policy decisions. The Policy Engine loads configuration from database into memory, then uses Open Policy Agent (OPA) for declarative policy evaluation. See "OPA Integration" section below for details.
-
-3. **Database as Source of Truth**: All configuration (devices, profiles, rules, bypass rules) is stored in SQLite/BoltDB. Changes require modifying the database and calling `policyEngine.Reload()`.
-
-4. **Dynamic TLS**: The CA component (`internal/ca/ca.go`) implements `GetCertificate` for the HTTPS server's TLS config, generating certificates on-demand with LRU cache.
-
-5. **Usage Tracking**: Session-based tracking with inactivity timeout. Activity is recorded during policy evaluation, and usage stats are checked before allowing access to limited resources.
+1. **Fact-Based OPA**: Go code gathers facts, OPA makes declarative policy decisions
+2. **Configuration as Code**: Devices, profiles, rules defined in version-controlled Rego
+3. **Two-Stage Filtering**: DNS decides bypass/intercept, Proxy enforces detailed rules
+4. **Dynamic TLS**: On-demand certificate generation with LRU cache
+5. **Category-Based Usage**: Track usage by category (entertainment, educational, etc.)
 
 ## Database Schema
 
-The database uses SQLite with migration-based schema management. All tables defined in `internal/database/db.go`:
+BoltDB buckets (operational data only):
 
-- **devices**: Device definitions with JSON identifiers array (IPs/MACs/CIDRs)
-- **profiles**: Access profiles with default_allow flag
-- **rules**: Domain/path-based allow/block rules with priority ordering
-- **time_rules**: Time-of-day/day-of-week restrictions
-- **usage_limits**: Daily time limits per category/domain with timer injection support
-- **bypass_rules**: DNS-level bypass rules (never intercept these domains)
+- **usage_sessions**: Active usage tracking sessions
+- **daily_usage**: Accumulated usage time per device/category/date
 - **request_logs**: HTTP/HTTPS request logs
 - **dns_logs**: DNS query logs
-- **daily_usage**: Accumulated usage time per device/limit/date
-- **usage_sessions**: Active usage tracking sessions
+- **admin_users**: Admin user accounts
+- **dhcp_leases**: DHCP IP address leases
 
 ## Policy Evaluation Flow
 
-**IMPORTANT**: Policy decisions are now made using Open Policy Agent (OPA) with Rego policies. The Go code prepares input data and calls OPA for decisions.
-
 ### DNS Level (policies/dns.rego)
-1. Build input: client IP, domain, devices, bypass rules, global bypass
-2. OPA evaluates `data.kproxy.dns.action`
-3. Returns: BYPASS (forward to upstream), INTERCEPT (proxy), or BLOCK (0.0.0.0)
-4. Logic:
-   - Check global bypass patterns (e.g., `ocsp.*.com`)
-   - Check device-specific bypass rules from database
-   - Default: INTERCEPT
 
-### Proxy Level (policies/proxy.rego)
-1. Build input: request details, devices, profiles, time, usage stats
-2. OPA evaluates `data.kproxy.proxy.decision`
-3. Returns: PolicyDecision with action, reason, metadata
-4. Logic flow in Rego:
-   - Identify device by IP/MAC (policies/device.rego)
-   - Check time restrictions (policies/time.rego)
-   - Match rules by priority (domain/path matching in policies/helpers.rego)
-   - For ALLOW rules: check usage limits (policies/usage.rego)
-   - Fall back to profile's default_allow or global default_action
-
-### Usage Limit Enforcement (policies/usage.rego)
-- OPA checks if usage limits apply (by category or domain)
-- Compares current usage against daily limits
-- Returns limit_exceeded=true if over limit
-- Go code records activity if limit not exceeded
-
-## Configuration Management
-
-Configuration is split between:
-- **YAML file** (`configs/config.example.yaml`): Server settings, DNS, TLS, logging
-- **SQLite database**: Dynamic policy configuration (devices, profiles, rules)
-
-The YAML config is loaded once at startup via `internal/config/config.go` using Viper. Database-backed configuration is loaded by Policy Engine and can be reloaded without restart.
-
-## Key Implementation Details
-
-### Device Identification
-- Primary: MAC address (if `use_mac_address: true`)
-- Fallback: IP address or CIDR range
-- Devices stored with JSON identifiers array: `["192.168.1.100", "aa:bb:cc:dd:ee:ff", "10.0.0.0/24"]`
-- Policy Engine maintains two indexes: `devices` (by ID) and `devicesByMAC` (by MAC)
-
-### Domain Matching (internal/policy/engine.go - matchDomain)
-- Exact match
-- Wildcard with regex conversion: `*.example.com`
-- Suffix matching: `.example.com` matches `sub.example.com`
-- Used for rules, bypass rules, and usage limit domains
-
-### Certificate Generation
-- Root CA and Intermediate CA loaded at startup
-- Intermediate CA signs leaf certificates for intercepted domains
-- Certificates cached in LRU cache (default 1000 entries, 24h TTL)
-- Certificate validity configurable (default 24h)
-
-### Metrics & Observability
-All components emit Prometheus metrics via `internal/metrics/metrics.go`:
-- `kproxy_dns_queries_total` - DNS queries by device/action
-- `kproxy_requests_total` - HTTP/HTTPS requests by device/action
-- `kproxy_blocked_requests_total` - Blocked requests by reason
-- `kproxy_certificates_generated_total` - TLS certificate generation
-- `kproxy_request_duration_seconds` - Request latency histogram
-
-## OPA Integration
-
-KProxy uses Open Policy Agent (OPA) as an embedded library for policy evaluation. Policy logic is written in declarative Rego language, not imperative Go.
-
-### Architecture
-
-```
-Policy Engine (Go)
-  ├─> Loads data from database (devices, profiles, rules)
-  ├─> OPA Engine (internal/policy/opa/engine.go)
-  │     ├─> Loads Rego policies from policy directory
-  │     ├─> Compiles policies into prepared queries
-  │     └─> Evaluates queries with input data
-  └─> Builds JSON input & calls OPA for decisions
-```
-
-### Rego Policy Files (policies/ directory)
-
-- **helpers.rego**: Utility functions
-  - `match_domain(domain, pattern)` - Exact, wildcard, suffix matching
-  - `match_path(path, rule_paths)` - Path prefix and glob matching
-  - `within_time_window(current_time, time_rule)` - Time-of-day checks
-  - `ip_in_cidr(ip, cidr)` - CIDR range matching
-
-- **device.rego**: Device identification
-  - `identified_device` - Returns device by MAC (priority) or IP/CIDR
-  - `device_by_mac` - MAC address lookup
-  - `device_by_ip` - IP/CIDR lookup
-
-- **dns.rego**: DNS action decisions
-  - `action` - Returns "BYPASS", "INTERCEPT", or "BLOCK"
-  - Checks global bypass, device-specific bypass rules
-
-- **time.rego**: Time-based access control
-  - `allowed` - Check if current time within allowed windows
-  - `allowed_for_rule(rule_id)` - Check for specific rule
-
-- **usage.rego**: Usage limit evaluation
-  - `applicable_limits` - Find limits matching request
-  - `limit_exceeded(limit_id)` - Check if limit exceeded
-  - `should_inject_timer` - Determine if timer overlay needed
-
-- **proxy.rego**: Complete proxy request evaluation
-  - `decision` - Main decision object with action, reason, metadata
-  - Orchestrates device ID, time checks, rule matching, usage limits
-  - Returns structured PolicyDecision
-
-### Policy Input Format
-
-DNS query input:
+**Input (facts):**
 ```json
 {
   "client_ip": "192.168.1.100",
-  "domain": "youtube.com",
-  "global_bypass": ["ocsp.*.com", "*.apple.com"],
-  "bypass_rules": [...],
-  "devices": {...},
-  "use_mac_address": true
+  "client_mac": "aa:bb:cc:dd:ee:ff",
+  "domain": "youtube.com"
 }
 ```
 
-Proxy request input:
+**Decision:**
+- Check global bypass domains → BYPASS
+- Default → INTERCEPT
+
+### Proxy Level (policies/proxy.rego)
+
+**Input (facts):**
 ```json
 {
   "client_ip": "192.168.1.100",
   "client_mac": "aa:bb:cc:dd:ee:ff",
   "host": "youtube.com",
   "path": "/watch",
-  "current_time": {"day_of_week": 2, "minutes": 540},
-  "devices": {...},
-  "profiles": {...},
-  "usage_stats": {...},
-  "default_action": "BLOCK"
+  "time": {"day_of_week": 2, "hour": 16, "minute": 30},
+  "usage": {
+    "entertainment": {"today_minutes": 45}
+  }
 }
 ```
 
-### Working with OPA Policies
+**Decision logic:**
+1. Identify device (MAC → IP → CIDR)
+2. Get profile from config
+3. Check time restrictions
+4. Match rules by priority
+5. Check usage limits
+6. Return ALLOW/BLOCK with metadata
 
-**Testing Rego policies:**
-```bash
-# Install OPA CLI
-# Test a policy
-opa test policies/ -v
+## Configuration Management
 
-# Evaluate a query interactively
-opa eval -d policies/ -i input.json "data.kproxy.dns.action"
+Configuration split between:
+- **YAML file** (`configs/config.example.yaml`): Server settings, ports, TLS paths
+- **Rego policies** (`policies/*.rego`): All access control logic
+
+The YAML config is loaded once at startup. Rego policies can be:
+- **Filesystem**: Auto-reloaded on file changes (development)
+- **Remote**: Fetched from HTTPS URLs (production)
+
+## Key Implementation Details
+
+### Device Identification (policies/device.rego)
+- Priority: MAC address (most reliable) → Exact IP → CIDR range
+- Defined in `policies/config.rego` devices map
+- Evaluated by OPA from facts
+
+### Domain Matching (helpers.rego)
+- Exact match: `youtube.com`
+- Wildcard: `*.youtube.com` matches `www.youtube.com`
+- Suffix: `.youtube.com` matches `sub.youtube.com`
+
+### Usage Tracking
+- Category-based: tracks by category (entertainment, educational, etc.)
+- Session-based with inactivity timeout (default 2 minutes)
+- Usage facts passed to OPA for limit evaluation
+- OPA decides if limit exceeded, Go records activity
+
+### Certificate Generation
+- Root CA + Intermediate CA loaded at startup
+- Intermediate signs leaf certificates on-demand
+- LRU cache (default 1000 entries, 24h TTL)
+
+### Metrics & Observability
+Prometheus metrics via `internal/metrics/metrics.go`:
+- `kproxy_dns_queries_total` - DNS queries by action
+- `kproxy_requests_total` - HTTP/HTTPS requests by action
+- `kproxy_blocked_requests_total` - Blocked requests by reason
+- `kproxy_certificates_generated_total` - TLS cert generation
+- `kproxy_request_duration_seconds` - Request latency
+
+## OPA Integration
+
+KProxy uses OPA as an embedded library for policy evaluation.
+
+### Architecture
+
+```
+Policy Engine (Go)
+  ├─> Gathers facts from request and database
+  ├─> OPA Engine (internal/policy/opa/engine.go)
+  │     ├─> Loads Rego policies from directory or URLs
+  │     ├─> Compiles policies into prepared queries
+  │     └─> Evaluates queries with input (facts)
+  └─> Returns structured decision
 ```
 
-**Modifying policies:**
-1. Edit .rego files in `policies/` directory
-2. Restart KProxy or call reload (OPA reloads on restart)
-3. OPA compilation errors will prevent startup
+### Policy Input Format
 
-**Policy development workflow:**
-1. Write Rego policy with test cases
-2. Test with `opa test`
-3. Deploy to policy directory (default: `/etc/kproxy/policies`)
-4. Configure `policy.opa_policy_dir` in config.yaml if different location
-
-### Configuration
-
-KProxy supports loading policies from either **local filesystem** or **remote HTTP/HTTPS URLs**.
-
-**Filesystem configuration** (default):
-```yaml
-policy:
-  opa_policy_source: filesystem          # "filesystem" or "remote"
-  opa_policy_dir: /etc/kproxy/policies   # Path to Rego policy files
-  default_action: block                   # Fallback action
-  use_mac_address: true                   # Prefer MAC for device ID
+**DNS query:**
+```json
+{
+  "client_ip": "192.168.1.100",
+  "client_mac": "aa:bb:cc:dd:ee:ff",
+  "domain": "youtube.com"
+}
 ```
 
-**Remote configuration** (centralized policy management):
+**Proxy request:**
+```json
+{
+  "client_ip": "192.168.1.100",
+  "client_mac": "aa:bb:cc:dd:ee:ff",
+  "host": "youtube.com",
+  "path": "/watch",
+  "time": {"day_of_week": 2, "hour": 16, "minute": 30},
+  "usage": {
+    "entertainment": {"today_minutes": 45}
+  }
+}
+```
+
+### Configuration Sources
+
+**Filesystem (default for development):**
 ```yaml
 policy:
-  opa_policy_source: remote              # "filesystem" or "remote"
-  opa_policy_urls:                        # List of policy URLs
-    - https://policy-server.example.com/policies/helpers.rego
+  opa_policy_source: filesystem
+  opa_policy_dir: /etc/kproxy/policies  # or ./policies for dev
+```
+
+**Remote (production):**
+```yaml
+policy:
+  opa_policy_source: remote
+  opa_policy_urls:
+    - https://policy-server.example.com/policies/config.rego
     - https://policy-server.example.com/policies/device.rego
     - https://policy-server.example.com/policies/dns.rego
-    - https://policy-server.example.com/policies/time.rego
-    - https://policy-server.example.com/policies/usage.rego
     - https://policy-server.example.com/policies/proxy.rego
-  opa_http_timeout: 30s                   # HTTP request timeout
-  opa_http_retries: 3                     # Retry attempts on failure
-  default_action: block
-  use_mac_address: true
+    - https://policy-server.example.com/policies/helpers.rego
+  opa_http_timeout: 30s
+  opa_http_retries: 3
 ```
-
-**Benefits of remote policies:**
-- Centralized policy management across multiple KProxy instances
-- Dynamic policy updates without filesystem access
-- Version control and CI/CD integration
-- Policies served from secure HTTPS endpoints
 
 ## Development Guidelines
 
 ### Adding New Policy Features
-1. Add database migration to storage layer (BoltDB stores)
-2. Add corresponding type to `internal/policy/types.go`
-3. Add loader method to `internal/policy/engine.go`
-4. **Update Rego policies** in `policies/` to incorporate new logic
-5. Update `buildDNSInput()` or `buildProxyInput()` in `internal/policy/opa_integration.go` to include new data
-6. Test with `opa test policies/` and integration tests
-7. Update example config if needed
+1. Update `policies/config.rego` with new configuration structure
+2. Update `policies/proxy.rego` or `policies/dns.rego` with evaluation logic
+3. Update fact gathering in `internal/policy/engine.go` if needed (e.g., new facts from DB)
+4. Test with `opa test policies/`
+5. Update this documentation
 
-### Working with Database
-- SQLite requires `CGO_ENABLED=1`
-- Connection pool limited to 1 (SQLite limitation)
-- All migrations in `getMigrations()` map, versioned sequentially
-- Use transactions for multi-step changes
-
-### Logging
-- Structured logging with zerolog
-- Each component gets logger with component name: `logger.With().Str("component", "dns").Logger()`
-- Log levels: debug, info, warn, error
-- JSON format for production, text format for development
+### Changing Access Rules
+1. Edit `policies/config.rego`
+2. Update device identifiers, profiles, rules, or usage limits
+3. For filesystem policies: changes auto-reload
+4. For remote policies: update remote policy server
 
 ### Testing
-- Use `go test -v -race -cover ./...` for all tests
-- Race detection enabled by default in make test
-- Mock database and policy engine for unit tests
+- **Unit tests**: `go test -v -race -cover ./...`
+- **Policy tests**: `opa test policies/ -v`
+- **Integration tests**: Use mock OPA engine with test policies
 
 ## Common Gotchas
 
-1. **Policy Engine Reload**: After modifying database configuration, must call `policyEngine.Reload()` or restart service. For remote policies, reload will re-fetch from URLs.
-2. **OPA Policy Changes**: Policy logic is now in Rego files. Modifying Go code in `engine.go` won't change policy behavior. Edit `.rego` files in the policies directory or update remote URLs instead.
-3. **OPA Compilation Errors**: Invalid Rego syntax will prevent KProxy from starting. Test policies with `opa test` before deploying.
-4. **Policy Source Configuration**:
-   - **Filesystem mode**: Policies must be in directory specified by `policy.opa_policy_dir` (default: `/etc/kproxy/policies`). Development can use `./policies` with config override.
-   - **Remote mode**: All policy URLs must be accessible at startup. Network failures will prevent KProxy from starting unless all retries succeed. Use HTTPS for production.
-5. **Remote Policy Security**: When using remote policies:
-   - Always use HTTPS in production to prevent MITM attacks
-   - Implement proper authentication/authorization on policy server
-   - Consider caching policies locally as backup
-   - Monitor policy fetch failures in logs
-6. **HTTP Retry Logic**: Remote policy fetches use exponential backoff (2s, 4s, 8s, 16s). Default 3 retries. Configure with `policy.opa_http_retries`.
-7. **CGO Requirement**: Building requires `CGO_ENABLED=1` for BoltDB (and previously SQLite)
-8. **Port Permissions**: DNS (53), HTTP (80), HTTPS (443) require root/CAP_NET_BIND_SERVICE
-9. **CA Certificate Trust**: Clients must trust root CA for HTTPS interception to work
-10. **Session Timeout**: Usage tracking sessions expire after inactivity_timeout (default 2 minutes)
-11. **Global Bypass**: Critical domains (OCSP, CRL) must be in global_bypass to prevent certificate validation failures
+1. **Policy Changes**: Edit `.rego` files, not database. Configuration is code now.
+2. **OPA Compilation Errors**: Invalid Rego syntax prevents startup. Test with `opa test`.
+3. **Policy Source**:
+   - **Filesystem**: Policies in `opa_policy_dir` (default `/etc/kproxy/policies`)
+   - **Remote**: All URLs must be accessible at startup
+4. **Remote Policy Security**: Use HTTPS, implement auth on policy server
+5. **CGO Requirement**: Building requires `CGO_ENABLED=1` for BoltDB
+6. **Port Permissions**: DNS (53), HTTP (80), HTTPS (443) require root/CAP_NET_BIND_SERVICE
+7. **CA Trust**: Clients must trust root CA for HTTPS interception
+8. **Usage Tracking**: Category names in `gatherUsageFacts()` must match policy categories
+9. **Device Identification**: MAC is most reliable, but DNS queries don't have MAC (uses IP only)
+
+## Migration from Old Architecture
+
+The project was refactored from database-backed configuration to fact-based OPA:
+
+**Old approach:**
+- Devices, profiles, rules stored in BoltDB
+- Go code loaded config from DB into memory
+- OPA evaluated pre-loaded config data
+
+**New approach:**
+- Devices, profiles, rules defined in Rego policies
+- Go code gathers facts (IP, MAC, time, usage)
+- OPA evaluates facts against policies
+
+**No migration tool needed**: Configuration must be redefined in `policies/config.rego`.
+
+## File Structure
+
+```
+kproxy/
+├── cmd/kproxy/main.go              # Application entry point
+├── internal/
+│   ├── policy/
+│   │   ├── engine.go               # Fact gathering and OPA integration
+│   │   ├── types.go                # Policy decision types
+│   │   ├── clock.go                # Time interface for testing
+│   │   └── opa/
+│   │       └── engine.go           # OPA engine wrapper
+│   ├── storage/
+│   │   ├── store.go                # Storage interface (operational data only)
+│   │   ├── types.go                # Storage types
+│   │   └── bolt/                   # BoltDB implementation
+│   ├── usage/
+│   │   ├── tracker.go              # Usage session tracking
+│   │   └── reset.go                # Daily usage reset scheduler
+│   ├── dns/server.go               # DNS server
+│   ├── proxy/server.go             # HTTP/HTTPS proxy
+│   ├── ca/ca.go                    # Certificate authority
+│   └── admin/                      # Admin API (read-only for logs/stats)
+├── policies/
+│   ├── config.rego                 # Central configuration
+│   ├── device.rego                 # Device identification
+│   ├── dns.rego                    # DNS decisions
+│   ├── proxy.rego                  # Proxy decisions
+│   └── helpers.rego                # Utility functions
+└── configs/
+    └── config.example.yaml         # Server configuration template
+```
