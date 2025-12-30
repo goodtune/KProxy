@@ -3,6 +3,7 @@ package systemd
 import (
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/coreos/go-systemd/v22/daemon"
@@ -64,27 +65,8 @@ func GetListeners() (*Listeners, error) {
 	}
 
 	// For UDP sockets (DNS and DHCP), we need PacketConn
-	// activation.Listeners() returns net.Listener, but for UDP we need to
-	// convert them to PacketConn
-
-	if lns, ok := listenersMap["dns-udp"]; ok && len(lns) > 0 {
-		if pc, ok := lns[0].(net.PacketConn); ok {
-			listeners.DNSUdp = pc
-		} else {
-			// Try to get the underlying UDPConn
-			if udpLn, ok := lns[0].(*net.UnixListener); !ok {
-				// For UDP, systemd passes it as a raw file descriptor
-				// We need to use activation.PacketConns() instead
-				// Let's get packet conns separately
-			}
-		}
-	}
-
-	if lns, ok := listenersMap["dhcp"]; ok && len(lns) > 0 {
-		if pc, ok := lns[0].(net.PacketConn); ok {
-			listeners.DHCP = pc
-		}
-	}
+	// ListenersWithNames() may not work well for UDP sockets,
+	// so we'll use PacketConns() and match by port
 
 	// For UDP sockets, we need to use PacketConns
 	// Let's get all packet conns and match by address
@@ -151,6 +133,7 @@ func NotifyWatchdog() error {
 
 // IsSystemdService returns true if running as a systemd service
 func IsSystemdService() bool {
-	// Check if NOTIFY_SOCKET is set
-	return daemon.SdNotifyNoSocket() != nil
+	// Check if NOTIFY_SOCKET environment variable is set
+	// This indicates we're running under systemd with Type=notify
+	return os.Getenv("NOTIFY_SOCKET") != ""
 }
