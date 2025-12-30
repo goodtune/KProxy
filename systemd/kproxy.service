@@ -1,0 +1,68 @@
+[Unit]
+Description=KProxy - Transparent HTTP/HTTPS Proxy with DNS and Parental Controls
+Documentation=https://github.com/goodtune/kproxy
+After=network-online.target redis.service
+Wants=network-online.target
+Requires=kproxy.socket
+
+[Service]
+Type=notify
+User=kproxy
+Group=kproxy
+
+# Working directory
+WorkingDirectory=/var/lib/kproxy
+
+# Main service executable
+ExecStart=/usr/local/bin/kproxy -config /etc/kproxy/config.yaml
+
+# Restart behavior
+Restart=on-failure
+RestartSec=5s
+
+# Systemd integration
+NotifyAccess=main
+
+# Security hardening
+# Note: These are examples - adjust based on your security requirements
+
+# Filesystem protection
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kproxy /var/log/kproxy
+ReadOnlyPaths=/etc/kproxy
+
+# Process isolation
+PrivateTmp=true
+NoNewPrivileges=true
+
+# Kernel protection
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+# Capability restrictions
+# Note: With socket activation, we don't need CAP_NET_BIND_SERVICE
+# Only minimal capabilities needed for network operations
+AmbientCapabilities=
+CapabilityBoundingSet=
+
+# System call filtering (optional - may need adjustment based on dependencies)
+# SystemCallFilter=@system-service
+# SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+# Environment
+Environment="GOGC=100"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kproxy
+
+[Install]
+WantedBy=multi-user.target

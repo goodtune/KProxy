@@ -54,6 +54,40 @@ sudo ./bin/kproxy -config /etc/kproxy/config.yaml  # Run with custom config
 sudo make generate-ca    # Generate CA certificates using scripts/generate-ca.sh
 ```
 
+### Systemd Integration
+
+KProxy supports **systemd socket activation** and **sd_notify protocol** for production deployments.
+
+#### Benefits
+- **No root privileges required** for binding privileged ports (80, 443, 53)
+- **Zero-downtime restarts** - systemd holds connections during restart
+- **Service readiness notification** - systemd knows when kproxy is ready
+- **Automatic restart on failure**
+- **Better security** - run as unprivileged user
+
+#### Quick Start
+```bash
+# Install systemd units
+sudo cp systemd/kproxy.socket /etc/systemd/system/
+sudo cp systemd/kproxy.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# Enable and start socket activation
+sudo systemctl enable kproxy.socket
+sudo systemctl start kproxy.socket
+
+# Zero-downtime restart
+sudo systemctl restart kproxy.service
+```
+
+See `systemd/README.md` for detailed installation and configuration instructions.
+
+#### Implementation Details
+- **Socket activation**: Uses `github.com/coreos/go-systemd/v22/activation` (pure Go, no CGO)
+- **sd_notify**: Uses `github.com/coreos/go-systemd/v22/daemon` (pure Go, no CGO)
+- **Named file descriptors**: HTTP, HTTPS, DNS (UDP/TCP), Metrics
+- **Graceful fallback**: Works with or without systemd (auto-detects)
+
 ## Policy Configuration
 
 All access control configuration is defined in **OPA Rego policies** in the `policies/` directory:
