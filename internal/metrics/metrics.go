@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"net"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -139,8 +140,9 @@ func init() {
 
 // Server is the metrics HTTP server
 type Server struct {
-	server *http.Server
-	logger zerolog.Logger
+	server   *http.Server
+	logger   zerolog.Logger
+	listener net.Listener // Optional pre-created listener (for systemd socket activation)
 }
 
 // NewServer creates a new metrics server
@@ -161,11 +163,25 @@ func NewServer(addr string, logger zerolog.Logger) *Server {
 	}
 }
 
+// SetListener sets a pre-created listener for systemd socket activation
+func (s *Server) SetListener(ln net.Listener) {
+	s.listener = ln
+}
+
 // Start starts the metrics server
 func (s *Server) Start() error {
 	s.logger.Info().Str("addr", s.server.Addr).Msg("Starting metrics server")
 	go func() {
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if s.listener != nil {
+			// Use systemd socket-activated listener
+			s.logger.Debug().Msg("Using systemd socket-activated metrics listener")
+			err = s.server.Serve(s.listener)
+		} else {
+			// Create and bind listener ourselves
+			err = s.server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			s.logger.Error().Err(err).Msg("Metrics server error")
 		}
 	}()

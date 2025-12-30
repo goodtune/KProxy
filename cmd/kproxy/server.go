@@ -18,6 +18,7 @@ import (
 	"github.com/goodtune/kproxy/internal/proxy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/storage/redis"
+	"github.com/goodtune/kproxy/internal/systemd"
 	"github.com/goodtune/kproxy/internal/usage"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -50,6 +51,15 @@ func runServer(cmd *cobra.Command, args []string) error {
 		Str("version", version).
 		Str("config", configPath).
 		Msg("Starting KProxy")
+
+	// Check for systemd socket activation
+	sdListeners, err := systemd.GetListeners()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to get systemd listeners")
+	}
+	if sdListeners.Activated {
+		logger.Info().Msg("Running with systemd socket activation")
+	}
 
 	// Initialize storage
 	store, err := openStorage(cfg.Storage)
@@ -168,6 +178,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize DNS Server: %w", err)
 	}
 
+	// Use systemd socket-activated listeners if available
+	if sdListeners.Activated {
+		dnsServer.SetListeners(sdListeners.DNSUdp, sdListeners.DNSTcp)
+	}
+
 	if err := dnsServer.Start(); err != nil {
 		return fmt.Errorf("failed to start DNS Server: %w", err)
 	}
@@ -256,6 +271,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 		logger,
 	)
 
+	// Use systemd socket-activated listeners if available
+	if sdListeners.Activated {
+		proxyServer.SetListeners(sdListeners.HTTP, sdListeners.HTTPS)
+	}
+
 	if err := proxyServer.Start(); err != nil {
 		return fmt.Errorf("failed to start Proxy Server: %w", err)
 	}
@@ -268,6 +288,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Initialize Metrics Server
 	metricsAddr := fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.MetricsPort)
 	metricsServer := metrics.NewServer(metricsAddr, logger)
+
+	// Use systemd socket-activated listener if available
+	if sdListeners.Activated && sdListeners.Metrics != nil {
+		metricsServer.SetListener(sdListeners.Metrics)
+	}
 
 	if err := metricsServer.Start(); err != nil {
 		return fmt.Errorf("failed to start Metrics Server: %w", err)
@@ -284,6 +309,13 @@ func runServer(cmd *cobra.Command, args []string) error {
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)
 
+	// Notify systemd that we're ready to serve requests
+	if err := systemd.NotifyReady(); err != nil {
+		logger.Warn().Err(err).Msg("Failed to send systemd ready notification")
+	} else {
+		logger.Debug().Msg("Sent systemd ready notification")
+	}
+
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -291,6 +323,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	<-sigChan
 
 	logger.Info().Msg("Shutdown signal received, gracefully stopping...")
+
+	// Notify systemd that we're stopping
+	if err := systemd.NotifyStopping(); err != nil {
+		logger.Warn().Err(err).Msg("Failed to send systemd stopping notification")
+	}
 
 	// Stop servers
 	resetScheduler.Stop()
