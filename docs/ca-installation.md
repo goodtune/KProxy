@@ -295,15 +295,11 @@ ls /etc/ssl/certs | grep kproxy
 
 2. **Install Profile:**
 
-   ![iOS Profile Downloaded](https://via.placeholder.com/300x200?text=Profile+Downloaded)
-
    You'll see: **"Profile Downloaded"**
 
    - Tap **"Close"**
 
 3. **Open Settings** → **General** → **VPN & Device Management** (or **Profiles**)
-
-   ![iOS Profiles](https://via.placeholder.com/300x400?text=VPN+and+Device+Management)
 
 4. **Tap the profile** (named after your certificate, e.g., "KProxy Root CA")
 
@@ -322,8 +318,6 @@ ls /etc/ssl/certs | grep kproxy
 **iOS requires an additional step to fully trust the certificate:**
 
 1. **Settings** → **General** → **About** → **Certificate Trust Settings**
-
-   ![iOS Certificate Trust Settings](https://via.placeholder.com/300x400?text=Certificate+Trust+Settings)
 
 2. **Enable full trust** for the KProxy Root CA:
 
@@ -360,8 +354,6 @@ Android certificate installation varies by version and manufacturer. These instr
 4. **Tap "Install a certificate"** (or **"Install from storage"**)
 
 5. **Select "CA certificate"** (not VPN & app user certificate)
-
-   ![Android Install CA Certificate](https://via.placeholder.com/300x400?text=Install+CA+Certificate)
 
 6. **Warning dialog:**
 
@@ -442,8 +434,6 @@ adb reboot
    - ✅ Trust this certificate for identifying email users
    - ✅ Trust this certificate for identifying software makers
 
-   ![Chrome OS Trust Options](https://via.placeholder.com/400x200?text=Trust+Options)
-
 8. **Click "OK"**
 
 9. **Restart Chrome**
@@ -469,8 +459,6 @@ Firefox uses its own certificate store, separate from the operating system. You 
 
 4. **Scroll to "Certificates"** section → Click **"View Certificates"**
 
-   ![Firefox View Certificates](https://via.placeholder.com/400x200?text=View+Certificates)
-
 5. **Click "Authorities" tab**
 
 6. **Click "Import"**
@@ -480,8 +468,6 @@ Firefox uses its own certificate store, separate from the operating system. You 
 8. **Check trust options:**
    - ✅ Trust this CA to identify websites
    - ✅ Trust this CA to identify email users (optional)
-
-   ![Firefox Trust CA](https://via.placeholder.com/400x200?text=Trust+this+CA)
 
 9. **Click "OK"**
 
