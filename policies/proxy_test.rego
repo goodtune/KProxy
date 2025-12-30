@@ -263,3 +263,225 @@ test_decision_minimal_input if {
 	decision.action == "ALLOW"
 	decision.matched_rule_id == "allow-github"
 }
+
+# Test path-based filtering
+test_decision_path_based_allow if {
+	mock_config_with_paths := {
+		"devices": {
+			"test-device": {
+				"name": "Test Device",
+				"identifiers": ["192.168.1.100"],
+				"profile": "youtube-filtered",
+			},
+		},
+		"profiles": {
+			"youtube-filtered": {
+				"name": "YouTube Education Only",
+				"rules": [
+					{
+						"id": "allow-youtube-education",
+						"domains": ["*.youtube.com"],
+						"paths": ["/education/*", "/channel/UC*"],
+						"action": "allow",
+						"category": "",
+						"priority": 1,
+					},
+					{
+						"id": "block-youtube-rest",
+						"domains": ["*.youtube.com"],
+						"action": "block",
+						"category": "",
+						"priority": 2,
+					},
+				],
+				"time_restrictions": {},
+				"usage_limits": {},
+				"default_action": "allow",
+			},
+		},
+	}
+
+	mock_device := {
+		"name": "Test Device",
+		"profile": "youtube-filtered",
+	}
+
+	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
+		with data.kproxy.device.identified_device as mock_device
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "www.youtube.com",
+			"path": "/education/science",
+			"time": {"day_of_week": 2, "hour": 14, "minute": 0},
+			"usage": {},
+		}
+
+	decision.action == "ALLOW"
+	decision.matched_rule_id == "allow-youtube-education"
+}
+
+test_decision_path_based_block if {
+	mock_config_with_paths := {
+		"devices": {
+			"test-device": {
+				"name": "Test Device",
+				"identifiers": ["192.168.1.100"],
+				"profile": "youtube-filtered",
+			},
+		},
+		"profiles": {
+			"youtube-filtered": {
+				"name": "YouTube Education Only",
+				"rules": [
+					{
+						"id": "allow-youtube-education",
+						"domains": ["*.youtube.com"],
+						"paths": ["/education/*", "/channel/UC*"],
+						"action": "allow",
+						"category": "",
+						"priority": 1,
+					},
+					{
+						"id": "block-youtube-rest",
+						"domains": ["*.youtube.com"],
+						"action": "block",
+						"category": "",
+						"priority": 2,
+					},
+				],
+				"time_restrictions": {},
+				"usage_limits": {},
+				"default_action": "allow",
+			},
+		},
+	}
+
+	mock_device := {
+		"name": "Test Device",
+		"profile": "youtube-filtered",
+	}
+
+	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
+		with data.kproxy.device.identified_device as mock_device
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "www.youtube.com",
+			"path": "/watch?v=dQw4w9WgXcQ",
+			"time": {"day_of_week": 2, "hour": 14, "minute": 0},
+			"usage": {},
+		}
+
+	decision.action == "BLOCK"
+	decision.matched_rule_id == "block-youtube-rest"
+	decision.reason == "matched block rule: block-youtube-rest"
+}
+
+test_decision_path_based_shorts_block if {
+	mock_config_with_paths := {
+		"devices": {
+			"test-device": {
+				"name": "Test Device",
+				"identifiers": ["192.168.1.100"],
+				"profile": "no-shorts",
+			},
+		},
+		"profiles": {
+			"no-shorts": {
+				"name": "Block YouTube Shorts",
+				"rules": [
+					{
+						"id": "block-shorts",
+						"domains": ["*.youtube.com"],
+						"paths": ["/shorts/*"],
+						"action": "block",
+						"category": "",
+						"priority": 1,
+					},
+					{
+						"id": "allow-youtube",
+						"domains": ["*.youtube.com"],
+						"action": "allow",
+						"category": "",
+						"priority": 2,
+					},
+				],
+				"time_restrictions": {},
+				"usage_limits": {},
+				"default_action": "block",
+			},
+		},
+	}
+
+	mock_device := {
+		"name": "Test Device",
+		"profile": "no-shorts",
+	}
+
+	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
+		with data.kproxy.device.identified_device as mock_device
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "www.youtube.com",
+			"path": "/shorts/abc123",
+			"time": {"day_of_week": 2, "hour": 14, "minute": 0},
+			"usage": {},
+		}
+
+	decision.action == "BLOCK"
+	decision.matched_rule_id == "block-shorts"
+}
+
+test_decision_path_based_regular_video_allow if {
+	mock_config_with_paths := {
+		"devices": {
+			"test-device": {
+				"name": "Test Device",
+				"identifiers": ["192.168.1.100"],
+				"profile": "no-shorts",
+			},
+		},
+		"profiles": {
+			"no-shorts": {
+				"name": "Block YouTube Shorts",
+				"rules": [
+					{
+						"id": "block-shorts",
+						"domains": ["*.youtube.com"],
+						"paths": ["/shorts/*"],
+						"action": "block",
+						"category": "",
+						"priority": 1,
+					},
+					{
+						"id": "allow-youtube",
+						"domains": ["*.youtube.com"],
+						"action": "allow",
+						"category": "",
+						"priority": 2,
+					},
+				],
+				"time_restrictions": {},
+				"usage_limits": {},
+				"default_action": "block",
+			},
+		},
+	}
+
+	mock_device := {
+		"name": "Test Device",
+		"profile": "no-shorts",
+	}
+
+	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
+		with data.kproxy.device.identified_device as mock_device
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "www.youtube.com",
+			"path": "/watch?v=dQw4w9WgXcQ",
+			"time": {"day_of_week": 2, "hour": 14, "minute": 0},
+			"usage": {},
+		}
+
+	decision.action == "ALLOW"
+	decision.matched_rule_id == "allow-youtube"
+}

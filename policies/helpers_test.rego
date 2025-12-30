@@ -292,6 +292,56 @@ test_match_path_exact_match if {
 	helpers.match_path("/api/login", ["/api/login"])
 }
 
+# Glob pattern tests
+test_match_path_glob_suffix_wildcard if {
+	helpers.match_path("/api/users/123", ["/api/users/*"])
+}
+
+test_match_path_glob_middle_wildcard if {
+	helpers.match_path("/api/users/123", ["/api/*/123"])
+}
+
+test_match_path_glob_youtube_shorts if {
+	helpers.match_path("/shorts/abc123", ["/shorts/*"])
+}
+
+test_match_path_glob_youtube_channel if {
+	helpers.match_path("/channel/UC12345", ["/channel/UC*"])
+}
+
+test_match_path_glob_no_match if {
+	not helpers.match_path("/other/path", ["/api/users/*"])
+}
+
+test_match_path_glob_multiple_wildcards if {
+	helpers.match_path("/api/v1/users/123/profile", ["/api/*/users/*/profile"])
+}
+
+test_match_path_glob_with_query_string if {
+	helpers.match_path("/watch?v=abc123", ["/watch*"])
+}
+
+test_match_path_glob_education_path if {
+	helpers.match_path("/education/math/algebra", ["/education/*"])
+}
+
+test_match_path_glob_exact_no_wildcard if {
+	not helpers.match_path("/api/users", ["/api/users/*"])
+}
+
+test_match_path_glob_special_chars_in_path if {
+	helpers.match_path("/api/v2.0/users", ["/api/v2.0/*"])
+}
+
+test_match_path_glob_root_wildcard if {
+	helpers.match_path("/anything/here", ["/*"])
+}
+
+test_match_path_glob_combined_with_prefix if {
+	# Should match via prefix, not glob
+	helpers.match_path("/api/users/123", ["/api/users"])
+}
+
 test_match_path_multiple_paths if {
 	helpers.match_path("/admin/settings", ["/api/users", "/admin/settings", "/public"])
 }

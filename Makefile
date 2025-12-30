@@ -19,7 +19,7 @@ test: tidy
 	@echo ""
 	@echo "Running OPA policy tests..."
 	@if command -v opa >/dev/null 2>&1; then \
-		opa test policies/ -v; \
+		opa test policies/ --coverage --threshold=96 | jq '.files|with_entries(.value |= .coverage)'; \
 	else \
 		echo "WARNING: opa not installed. Install from https://www.openpolicyagent.org/docs/latest/#running-opa"; \
 		echo "Skipping policy tests..."; \

@@ -855,7 +855,9 @@ devices := {
 
 ### Path-Based Rules
 
-Block specific paths on allowed domains:
+Control access to specific paths on allowed domains. Rules can optionally specify a `paths` field with glob patterns to match URL paths.
+
+**Example: Allow only educational YouTube content**
 
 ```rego
 rules := [
@@ -864,19 +866,55 @@ rules := [
         "domains": ["*.youtube.com"],
         "paths": ["/education/*", "/channel/UC*"],  # Educational channels only
         "action": "allow",
+        "category": "educational",
         "priority": 5
     },
     {
-        "id": "block-youtube-shorts",
+        "id": "block-youtube-rest",
         "domains": ["*.youtube.com"],
-        "paths": ["/shorts/*"],  # Block YouTube Shorts
-        "action": "block",
-        "priority": 1  # Higher priority
+        "action": "block",  # No paths = match all other paths
+        "category": "",
+        "priority": 10
     }
 ]
 ```
 
-**Note:** Path matching currently requires custom implementation in `proxy.rego`. Check your KProxy version.
+**Example: Block YouTube Shorts**
+
+```rego
+rules := [
+    {
+        "id": "block-shorts",
+        "domains": ["*.youtube.com"],
+        "paths": ["/shorts/*"],  # Block YouTube Shorts
+        "action": "block",
+        "category": "",
+        "priority": 1
+    },
+    {
+        "id": "allow-youtube",
+        "domains": ["*.youtube.com"],
+        "action": "allow",  # Allow all other YouTube paths
+        "category": "entertainment",
+        "priority": 2
+    }
+]
+```
+
+**Path Matching Modes:**
+
+1. **Null or omitted** `paths` field → Matches all paths on the domain
+2. **Empty array** `paths: []` → Matches all paths on the domain
+3. **Wildcard** `paths: ["*"]` → Explicitly match all paths
+4. **Prefix matching** `paths: ["/api/users"]` → Matches `/api/users`, `/api/users/123`, etc.
+5. **Glob patterns** `paths: ["/shorts/*", "/watch?v=*"]` → Pattern matching with wildcards
+
+**How it works:**
+
+- Rules are evaluated in order (by priority if specified)
+- First matching rule wins (both domain AND path must match)
+- If a rule has no `paths` field, it matches all paths for that domain
+- Path matching uses the same glob patterns as domain matching (`*` = wildcard)
 
 ### Remote Policy Loading
 

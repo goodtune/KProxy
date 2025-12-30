@@ -34,8 +34,8 @@ match_domain(domain, pattern) if {
 replace_wildcard(pattern) := result if {
 	# Quote meta characters except *
 	quoted := replace_special_chars(pattern)
-	# Replace \* with .*
-	result := replace(quoted, "\\*", ".*")
+	# Replace * with .*
+	result := replace(quoted, "*", ".*")
 }
 
 # Simplified regex quoting - escape common special chars except *
