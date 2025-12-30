@@ -47,12 +47,12 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	// Warn about unknown keys
 	if len(unknownKeys) > 0 {
 		red := color.New(color.FgRed, color.Bold)
-		fmt.Fprintln(os.Stdout)
-		red.Fprintf(os.Stdout, "⚠️  WARNING: Found %d unknown configuration key(s):\n", len(unknownKeys))
+		_, _ = fmt.Fprintln(os.Stdout)
+		_, _ = red.Fprintf(os.Stdout, "⚠️  WARNING: Found %d unknown configuration key(s):\n", len(unknownKeys))
 		for _, key := range unknownKeys {
-			red.Fprintf(os.Stdout, "   - %s\n", key)
+			_, _ = red.Fprintf(os.Stdout, "   - %s\n", key)
 		}
-		fmt.Fprintln(os.Stdout, "\nThese keys will be ignored and may indicate typos or deprecated settings.")
+		_, _ = fmt.Fprintln(os.Stdout, "\nThese keys will be ignored and may indicate typos or deprecated settings.")
 	}
 
 	// If dump requested, show full configuration with defaults highlighted
@@ -375,22 +375,19 @@ func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	dumpField("  disabled_hosts", cfg.Response.DisabledHosts, defaultCfg.Response.DisabledHosts, yellow, green)
 	dumpField("  allowed_content_types", cfg.Response.AllowedContentTypes, defaultCfg.Response.AllowedContentTypes, yellow, green)
 
-<<<<<<< HEAD
 	_, _ = fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
-=======
 	// Display unknown keys if any
 	if len(unknownKeys) > 0 {
 		red := color.New(color.FgRed, color.Bold)
 		cyan := color.New(color.FgCyan, color.Bold)
 
-		cyan.Println("\n[UNKNOWN KEYS - These will be ignored!]")
+		_, _ = cyan.Println("\n[UNKNOWN KEYS - These will be ignored!]")
 		for _, key := range unknownKeys {
-			red.Printf("  %s = (unknown key - check for typos)\n", key)
+			_, _ = red.Printf("  %s = (unknown key - check for typos)\n", key)
 		}
+		_, _ = fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
 	}
 
-	fmt.Fprintln(os.Stdout, "\n" + strings.Repeat("=", 80))
->>>>>>> 68bd690 (feat: detect and highlight unknown configuration keys)
 }
 
 // dumpField prints a field with color if it differs from default
