@@ -263,7 +263,7 @@ func (e *Engine) prepareDNSQuery() error {
 	ctx := context.Background()
 
 	// Build rego options: query + modules
-	opts := []func(*rego.Rego){rego.Query("data.kproxy.dns.action")}
+	opts := []func(*rego.Rego){rego.Query("data.kproxy.dns.decision")}
 	opts = append(opts, e.withModules()...)
 
 	// Build rego instance with all options
@@ -313,14 +313,20 @@ func (e *Engine) withModules() []func(*rego.Rego) {
 	return opts
 }
 
+// DNSDecision represents a DNS policy decision
+type DNSDecision struct {
+	Action string `json:"action"`
+	Reason string `json:"reason"`
+}
+
 // EvaluateDNS evaluates DNS action for a query
-func (e *Engine) EvaluateDNS(ctx context.Context, input map[string]interface{}) (string, error) {
+func (e *Engine) EvaluateDNS(ctx context.Context, input map[string]interface{}) (*DNSDecision, error) {
 	startTime := time.Now()
 
 	// Evaluate the query
 	results, err := e.dnsQuery.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
-		return "", fmt.Errorf("DNS query evaluation failed: %w", err)
+		return nil, fmt.Errorf("DNS query evaluation failed: %w", err)
 	}
 
 	duration := time.Since(startTime)
@@ -328,19 +334,32 @@ func (e *Engine) EvaluateDNS(ctx context.Context, input map[string]interface{}) 
 
 	// Extract result
 	if len(results) == 0 {
-		return "", fmt.Errorf("no results from DNS query")
+		return nil, fmt.Errorf("no results from DNS query")
 	}
 
 	if len(results[0].Expressions) == 0 {
-		return "", fmt.Errorf("no expressions in DNS query result")
+		return nil, fmt.Errorf("no expressions in DNS query result")
 	}
 
-	action, ok := results[0].Expressions[0].Value.(string)
+	// DNS decision is now a structured object
+	decisionMap, ok := results[0].Expressions[0].Value.(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("DNS action is not a string: %T", results[0].Expressions[0].Value)
+		return nil, fmt.Errorf("DNS decision is not an object: %T", results[0].Expressions[0].Value)
 	}
 
-	return action, nil
+	decision := &DNSDecision{}
+
+	if action, ok := decisionMap["action"].(string); ok {
+		decision.Action = action
+	} else {
+		return nil, fmt.Errorf("DNS decision action is not a string")
+	}
+
+	if reason, ok := decisionMap["reason"].(string); ok {
+		decision.Reason = reason
+	}
+
+	return decision, nil
 }
 
 // ProxyDecision represents a proxy policy decision

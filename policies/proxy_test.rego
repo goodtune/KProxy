@@ -6,13 +6,11 @@ import data.kproxy.proxy
 
 # Test data with complete schema - this ensures all fields referenced in the code exist
 mock_config := {
-	"devices": {
-		"test-device": {
-			"name": "Test Device",
-			"identifiers": ["192.168.1.100"],
-			"profile": "test-profile",
-		},
-	},
+	"devices": {"test-device": {
+		"name": "Test Device",
+		"identifiers": ["192.168.1.100"],
+		"profile": "test-profile",
+	}},
 	"profiles": {
 		"test-profile": {
 			"name": "Test Profile",
@@ -31,21 +29,17 @@ mock_config := {
 					"category": "entertainment",
 				},
 			],
-			"time_restrictions": {
-				"weekday": {
-					"days": [1, 2, 3, 4, 5], # Monday-Friday
-					"start_hour": 9,
-					"start_minute": 0,
-					"end_hour": 17,
-					"end_minute": 0,
-				},
-			},
-			"usage_limits": {
-				"entertainment": {
-					"daily_minutes": 60,
-					"inject_timer": true,
-				},
-			},
+			"time_restrictions": {"weekday": {
+				"days": [1, 2, 3, 4, 5], # Monday-Friday
+				"start_hour": 9,
+				"start_minute": 0,
+				"end_hour": 17,
+				"end_minute": 0,
+			}},
+			"usage_limits": {"entertainment": {
+				"daily_minutes": 60,
+				"inject_timer": true,
+			}},
 			"default_action": "block",
 		},
 		"unrestricted-profile": {
@@ -151,28 +145,22 @@ test_decision_default_action if {
 # Test 6: Usage limit exceeded should block (using unrestricted profile to avoid time restriction conflicts)
 test_decision_usage_limit_exceeded if {
 	# Create profile with usage limits but no time restrictions
-	config_with_limits := object.union(mock_config, {
-		"profiles": object.union(mock_config.profiles, {
-			"limit-profile": {
-				"name": "Limit Test Profile",
-				"description": "Has usage limits but no time restrictions",
-				"rules": [{
-					"id": "allow-youtube",
-					"domains": ["youtube.com", "*.youtube.com"],
-					"action": "allow",
-					"category": "entertainment",
-				}],
-				"time_restrictions": {},
-				"usage_limits": {
-					"entertainment": {
-						"daily_minutes": 60,
-						"inject_timer": true,
-					},
-				},
-				"default_action": "block",
-			},
-		}),
-	})
+	config_with_limits := object.union(mock_config, {"profiles": object.union(mock_config.profiles, {"limit-profile": {
+		"name": "Limit Test Profile",
+		"description": "Has usage limits but no time restrictions",
+		"rules": [{
+			"id": "allow-youtube",
+			"domains": ["youtube.com", "*.youtube.com"],
+			"action": "allow",
+			"category": "entertainment",
+		}],
+		"time_restrictions": {},
+		"usage_limits": {"entertainment": {
+			"daily_minutes": 60,
+			"inject_timer": true,
+		}},
+		"default_action": "block",
+	}})})
 
 	limit_device := {
 		"name": "Test Device",
@@ -267,38 +255,34 @@ test_decision_minimal_input if {
 # Test path-based filtering
 test_decision_path_based_allow if {
 	mock_config_with_paths := {
-		"devices": {
-			"test-device": {
-				"name": "Test Device",
-				"identifiers": ["192.168.1.100"],
-				"profile": "youtube-filtered",
-			},
-		},
-		"profiles": {
-			"youtube-filtered": {
-				"name": "YouTube Education Only",
-				"rules": [
-					{
-						"id": "allow-youtube-education",
-						"domains": ["*.youtube.com"],
-						"paths": ["/education/*", "/channel/UC*"],
-						"action": "allow",
-						"category": "",
-						"priority": 1,
-					},
-					{
-						"id": "block-youtube-rest",
-						"domains": ["*.youtube.com"],
-						"action": "block",
-						"category": "",
-						"priority": 2,
-					},
-				],
-				"time_restrictions": {},
-				"usage_limits": {},
-				"default_action": "allow",
-			},
-		},
+		"devices": {"test-device": {
+			"name": "Test Device",
+			"identifiers": ["192.168.1.100"],
+			"profile": "youtube-filtered",
+		}},
+		"profiles": {"youtube-filtered": {
+			"name": "YouTube Education Only",
+			"rules": [
+				{
+					"id": "allow-youtube-education",
+					"domains": ["*.youtube.com"],
+					"paths": ["/education/*", "/channel/UC*"],
+					"action": "allow",
+					"category": "",
+					"priority": 1,
+				},
+				{
+					"id": "block-youtube-rest",
+					"domains": ["*.youtube.com"],
+					"action": "block",
+					"category": "",
+					"priority": 2,
+				},
+			],
+			"time_restrictions": {},
+			"usage_limits": {},
+			"default_action": "allow",
+		}},
 	}
 
 	mock_device := {
@@ -322,38 +306,34 @@ test_decision_path_based_allow if {
 
 test_decision_path_based_block if {
 	mock_config_with_paths := {
-		"devices": {
-			"test-device": {
-				"name": "Test Device",
-				"identifiers": ["192.168.1.100"],
-				"profile": "youtube-filtered",
-			},
-		},
-		"profiles": {
-			"youtube-filtered": {
-				"name": "YouTube Education Only",
-				"rules": [
-					{
-						"id": "allow-youtube-education",
-						"domains": ["*.youtube.com"],
-						"paths": ["/education/*", "/channel/UC*"],
-						"action": "allow",
-						"category": "",
-						"priority": 1,
-					},
-					{
-						"id": "block-youtube-rest",
-						"domains": ["*.youtube.com"],
-						"action": "block",
-						"category": "",
-						"priority": 2,
-					},
-				],
-				"time_restrictions": {},
-				"usage_limits": {},
-				"default_action": "allow",
-			},
-		},
+		"devices": {"test-device": {
+			"name": "Test Device",
+			"identifiers": ["192.168.1.100"],
+			"profile": "youtube-filtered",
+		}},
+		"profiles": {"youtube-filtered": {
+			"name": "YouTube Education Only",
+			"rules": [
+				{
+					"id": "allow-youtube-education",
+					"domains": ["*.youtube.com"],
+					"paths": ["/education/*", "/channel/UC*"],
+					"action": "allow",
+					"category": "",
+					"priority": 1,
+				},
+				{
+					"id": "block-youtube-rest",
+					"domains": ["*.youtube.com"],
+					"action": "block",
+					"category": "",
+					"priority": 2,
+				},
+			],
+			"time_restrictions": {},
+			"usage_limits": {},
+			"default_action": "allow",
+		}},
 	}
 
 	mock_device := {
@@ -378,38 +358,34 @@ test_decision_path_based_block if {
 
 test_decision_path_based_shorts_block if {
 	mock_config_with_paths := {
-		"devices": {
-			"test-device": {
-				"name": "Test Device",
-				"identifiers": ["192.168.1.100"],
-				"profile": "no-shorts",
-			},
-		},
-		"profiles": {
-			"no-shorts": {
-				"name": "Block YouTube Shorts",
-				"rules": [
-					{
-						"id": "block-shorts",
-						"domains": ["*.youtube.com"],
-						"paths": ["/shorts/*"],
-						"action": "block",
-						"category": "",
-						"priority": 1,
-					},
-					{
-						"id": "allow-youtube",
-						"domains": ["*.youtube.com"],
-						"action": "allow",
-						"category": "",
-						"priority": 2,
-					},
-				],
-				"time_restrictions": {},
-				"usage_limits": {},
-				"default_action": "block",
-			},
-		},
+		"devices": {"test-device": {
+			"name": "Test Device",
+			"identifiers": ["192.168.1.100"],
+			"profile": "no-shorts",
+		}},
+		"profiles": {"no-shorts": {
+			"name": "Block YouTube Shorts",
+			"rules": [
+				{
+					"id": "block-shorts",
+					"domains": ["*.youtube.com"],
+					"paths": ["/shorts/*"],
+					"action": "block",
+					"category": "",
+					"priority": 1,
+				},
+				{
+					"id": "allow-youtube",
+					"domains": ["*.youtube.com"],
+					"action": "allow",
+					"category": "",
+					"priority": 2,
+				},
+			],
+			"time_restrictions": {},
+			"usage_limits": {},
+			"default_action": "block",
+		}},
 	}
 
 	mock_device := {
@@ -433,38 +409,34 @@ test_decision_path_based_shorts_block if {
 
 test_decision_path_based_regular_video_allow if {
 	mock_config_with_paths := {
-		"devices": {
-			"test-device": {
-				"name": "Test Device",
-				"identifiers": ["192.168.1.100"],
-				"profile": "no-shorts",
-			},
-		},
-		"profiles": {
-			"no-shorts": {
-				"name": "Block YouTube Shorts",
-				"rules": [
-					{
-						"id": "block-shorts",
-						"domains": ["*.youtube.com"],
-						"paths": ["/shorts/*"],
-						"action": "block",
-						"category": "",
-						"priority": 1,
-					},
-					{
-						"id": "allow-youtube",
-						"domains": ["*.youtube.com"],
-						"action": "allow",
-						"category": "",
-						"priority": 2,
-					},
-				],
-				"time_restrictions": {},
-				"usage_limits": {},
-				"default_action": "block",
-			},
-		},
+		"devices": {"test-device": {
+			"name": "Test Device",
+			"identifiers": ["192.168.1.100"],
+			"profile": "no-shorts",
+		}},
+		"profiles": {"no-shorts": {
+			"name": "Block YouTube Shorts",
+			"rules": [
+				{
+					"id": "block-shorts",
+					"domains": ["*.youtube.com"],
+					"paths": ["/shorts/*"],
+					"action": "block",
+					"category": "",
+					"priority": 1,
+				},
+				{
+					"id": "allow-youtube",
+					"domains": ["*.youtube.com"],
+					"action": "allow",
+					"category": "",
+					"priority": 2,
+				},
+			],
+			"time_restrictions": {},
+			"usage_limits": {},
+			"default_action": "block",
+		}},
 	}
 
 	mock_device := {
@@ -484,4 +456,62 @@ test_decision_path_based_regular_video_allow if {
 
 	decision.action == "ALLOW"
 	decision.matched_rule_id == "allow-youtube"
+}
+
+# Test: Profile with default bypass but explicit block rule should block at proxy
+test_profile_default_bypass_with_block_rule if {
+	config_bypass_with_block := {
+		"devices": {"test-device": {
+			"name": "Test Device",
+			"identifiers": ["192.168.1.100"],
+			"profile": "open",
+		}},
+		"profiles": {"open": {
+			"name": "Open Access",
+			"description": "Bypass by default but block specific domains",
+			"time_restrictions": {},
+			"rules": [{
+				"id": "block-github",
+				"domains": ["github.com", "*.github.com"],
+				"action": "block",
+				"category": "code",
+			}],
+			"usage_limits": {},
+			"default_action": "bypass",
+		}},
+	}
+
+	mock_device := {
+		"name": "Test Device",
+		"profile": "open",
+	}
+
+	# github.com should be BLOCKED (even though default_action is bypass)
+	decision := proxy.decision with data.kproxy.config as config_bypass_with_block
+		with data.kproxy.device.identified_device as mock_device
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "github.com",
+			"path": "/",
+			"time": {"day_of_week": 2, "hour": 14, "minute": 0},
+			"usage": {},
+		}
+
+	decision.action == "BLOCK"
+	decision.matched_rule_id == "block-github"
+	decision.category == "code"
+
+	# other.com should be BYPASSED (default_action applies when no rules match)
+	decision2 := proxy.decision with data.kproxy.config as config_bypass_with_block
+		with data.kproxy.device.identified_device as mock_device
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "other.com",
+			"path": "/",
+			"time": {"day_of_week": 2, "hour": 14, "minute": 0},
+			"usage": {},
+		}
+
+	decision2.action == "BYPASS"
+	decision2.reason == "default bypass (no matching rules)"
 }

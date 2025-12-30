@@ -21,6 +21,7 @@ match_domain(domain, pattern) if {
 match_domain(domain, pattern) if {
 	startswith(pattern, ".")
 	suffix := substring(pattern, 1, -1)
+
 	# Either exact match without dot or ends with the pattern
 	lower(domain) == lower(suffix)
 }
@@ -34,6 +35,7 @@ match_domain(domain, pattern) if {
 replace_wildcard(pattern) := result if {
 	# Quote meta characters except *
 	quoted := replace_special_chars(pattern)
+
 	# Replace * with .*
 	result := replace(quoted, "*", ".*")
 }
@@ -130,6 +132,7 @@ match_path(path, rule_paths) if {
 	# Glob-style matching
 	some rule_path in rule_paths
 	contains(rule_path, "*")
+
 	# Convert to regex pattern
 	pattern := concat("", ["^", replace_wildcard(rule_path), "$"])
 	regex.match(pattern, path)

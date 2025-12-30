@@ -279,3 +279,7 @@ default_block_page(action) := "default_block" if {
 default_block_page(action) := "" if {
 	action == "ALLOW"
 }
+
+default_block_page(action) := "" if {
+	action == "BYPASS"
+}

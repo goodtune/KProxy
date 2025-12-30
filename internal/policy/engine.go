@@ -66,14 +66,20 @@ func (e *Engine) GetDNSAction(clientIP net.IP, clientMAC net.HardwareAddr, domai
 
 	// Evaluate with OPA
 	ctx := context.Background()
-	action, err := e.opaEngine.EvaluateDNS(ctx, facts)
+	dnsDecision, err := e.opaEngine.EvaluateDNS(ctx, facts)
 	if err != nil {
 		e.logger.Error().Err(err).Msg("OPA DNS evaluation failed, falling back to intercept")
 		return DNSActionIntercept
 	}
 
+	// Log the decision reason
+	e.logger.Debug().
+		Str("action", dnsDecision.Action).
+		Str("reason", dnsDecision.Reason).
+		Msg("DNS policy decision")
+
 	// Convert string action to DNSAction
-	switch action {
+	switch dnsDecision.Action {
 	case "BYPASS":
 		return DNSActionBypass
 	case "BLOCK":
@@ -81,7 +87,7 @@ func (e *Engine) GetDNSAction(clientIP net.IP, clientMAC net.HardwareAddr, domai
 	case "INTERCEPT":
 		return DNSActionIntercept
 	default:
-		e.logger.Warn().Str("action", action).Msg("Unknown DNS action from OPA, defaulting to intercept")
+		e.logger.Warn().Str("action", dnsDecision.Action).Msg("Unknown DNS action from OPA, defaulting to intercept")
 		return DNSActionIntercept
 	}
 }

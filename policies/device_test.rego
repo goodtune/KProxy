@@ -5,34 +5,32 @@ import rego.v1
 import data.kproxy.device
 
 # Test configuration with various device identifiers
-mock_config := {
-	"devices": {
-		"mac-device": {
-			"name": "MAC Device",
-			"identifiers": ["aa:bb:cc:dd:ee:ff"],
-			"profile": "mac-profile",
-		},
-		"ip-device": {
-			"name": "IP Device",
-			"identifiers": ["192.168.1.100"],
-			"profile": "ip-profile",
-		},
-		"cidr-device": {
-			"name": "CIDR Device",
-			"identifiers": ["10.0.0.0/24"],
-			"profile": "cidr-profile",
-		},
-		"multi-identifier-device": {
-			"name": "Multi Identifier Device",
-			"identifiers": [
-				"11:22:33:44:55:66",
-				"172.16.0.50",
-				"192.168.100.0/28",
-			],
-			"profile": "multi-profile",
-		},
+mock_config := {"devices": {
+	"mac-device": {
+		"name": "MAC Device",
+		"identifiers": ["aa:bb:cc:dd:ee:ff"],
+		"profile": "mac-profile",
 	},
-}
+	"ip-device": {
+		"name": "IP Device",
+		"identifiers": ["192.168.1.100"],
+		"profile": "ip-profile",
+	},
+	"cidr-device": {
+		"name": "CIDR Device",
+		"identifiers": ["10.0.0.0/24"],
+		"profile": "cidr-profile",
+	},
+	"multi-identifier-device": {
+		"name": "Multi Identifier Device",
+		"identifiers": [
+			"11:22:33:44:55:66",
+			"172.16.0.50",
+			"192.168.100.0/28",
+		],
+		"profile": "multi-profile",
+	},
+}}
 
 # Test 1: Identify device by MAC address
 test_identify_by_mac if {
@@ -85,20 +83,18 @@ test_mac_priority_over_ip if {
 
 # Test 5: Exact IP takes priority over CIDR
 test_ip_priority_over_cidr if {
-	config_with_overlap := {
-		"devices": {
-			"cidr-device": {
-				"name": "CIDR Device",
-				"identifiers": ["192.168.1.0/24"],
-				"profile": "cidr-profile",
-			},
-			"exact-ip-device": {
-				"name": "Exact IP Device",
-				"identifiers": ["192.168.1.100"],
-				"profile": "exact-profile",
-			},
+	config_with_overlap := {"devices": {
+		"cidr-device": {
+			"name": "CIDR Device",
+			"identifiers": ["192.168.1.0/24"],
+			"profile": "cidr-profile",
 		},
-	}
+		"exact-ip-device": {
+			"name": "Exact IP Device",
+			"identifiers": ["192.168.1.100"],
+			"profile": "exact-profile",
+		},
+	}}
 
 	dev := device.identified_device with data.kproxy.config as config_with_overlap
 		with input as {
