@@ -10,6 +10,12 @@ server:
   http_port: 80
   https_port: 443
 
+  # Server name for client setup (certificate download, etc.)
+  # This domain is always intercepted and allowed for all devices
+  # HTTP requests to this domain are redirected to HTTPS
+  # HTTPS requests serve the setup page and root certificate download
+  name: "local.kproxy"
+
   # Metrics (Prometheus endpoint - replaces admin UI)
   metrics_port: 9090
 
@@ -87,6 +93,20 @@ tls:
   cert_cache_size: 1000
   cert_cache_ttl: "24h"
   cert_validity: "24h"
+
+  # Let's Encrypt integration (OPTIONAL - for trusted certificates on server.name)
+  # By default, certificates are generated on-the-fly using the internal CA
+  # Enable this to use Let's Encrypt for a publicly trusted certificate on server.name
+  # Requires a public domain name and DNS provider credentials for ACME challenge
+  use_letsencrypt: false
+  # lego_email: "admin@example.com"                    # Email for Let's Encrypt account
+  # lego_dns_provider: "cloudflare"                    # DNS provider (see lego docs)
+  # lego_credentials:                                  # DNS provider credentials
+  #   CLOUDFLARE_EMAIL: "admin@example.com"
+  #   CLOUDFLARE_API_KEY: "your-api-key"
+  # lego_cert_path: "/etc/kproxy/certs/letsencrypt.crt"
+  # lego_key_path: "/etc/kproxy/certs/letsencrypt.key"
+  # lego_ca_dir_url: "https://acme-v02.api.letsencrypt.org/directory"  # Or staging URL for testing
 
 storage:
   # Storage backend type (only Redis is supported)

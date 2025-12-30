@@ -24,6 +24,8 @@ type Server struct {
 	ca           *ca.CA
 	logger       zerolog.Logger
 	adminDomain  string
+	serverName   string // Server name for client setup (e.g., "local.kproxy")
+	httpsPort    int    // HTTPS port for redirect
 
 	// Optional pre-created listeners (for systemd socket activation)
 	httpListener  net.Listener
@@ -35,6 +37,8 @@ type Config struct {
 	HTTPAddr    string
 	HTTPSAddr   string
 	AdminDomain string
+	ServerName  string // Server name for client setup
+	HTTPSPort   int    // HTTPS port for redirect
 }
 
 // NewServer creates a new proxy server
@@ -49,6 +53,8 @@ func NewServer(
 		ca:           ca,
 		logger:       logger.With().Str("component", "proxy").Logger(),
 		adminDomain:  config.AdminDomain,
+		serverName:   config.ServerName,
+		httpsPort:    config.HTTPSPort,
 	}
 
 	// HTTP server
@@ -160,6 +166,32 @@ func (s *Server) Stop() error {
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
+	// Check if this is a request to server.name - redirect to HTTPS
+	host := r.Host
+	if strings.HasSuffix(host, fmt.Sprintf(":%d", 80)) {
+		host = strings.TrimSuffix(host, fmt.Sprintf(":%d", 80))
+	}
+
+	if s.matchesServerName(host) {
+		// Redirect to HTTPS
+		httpsURL := fmt.Sprintf("https://%s", s.serverName)
+		if s.httpsPort != 443 {
+			httpsURL = fmt.Sprintf("https://%s:%d", s.serverName, s.httpsPort)
+		}
+		httpsURL += r.URL.Path
+		if r.URL.RawQuery != "" {
+			httpsURL += "?" + r.URL.RawQuery
+		}
+
+		s.logger.Debug().
+			Str("from", r.Host).
+			Str("to", httpsURL).
+			Msg("Redirecting HTTP to HTTPS for server name")
+
+		http.Redirect(w, r, httpsURL, http.StatusMovedPermanently)
+		return
+	}
+
 	// Extract client info
 	clientIP := s.extractClientIP(r)
 
@@ -212,6 +244,18 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 // handleHTTPS handles HTTPS requests (after TLS termination)
 func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+
+	// Check if this is a request to server.name for client setup
+	host := r.Host
+	if strings.HasSuffix(host, fmt.Sprintf(":%d", s.httpsPort)) {
+		host = strings.TrimSuffix(host, fmt.Sprintf(":%d", s.httpsPort))
+	}
+
+	if s.matchesServerName(host) {
+		// Serve client setup routes
+		s.handleClientSetup(w, r)
+		return
+	}
 
 	// Extract client info
 	clientIP := s.extractClientIP(r)
@@ -467,5 +511,152 @@ func removeHopByHopHeaders(h http.Header) {
 
 	for _, header := range hopByHopHeaders {
 		h.Del(header)
+	}
+}
+
+// matchesServerName checks if the host matches the server name
+func (s *Server) matchesServerName(host string) bool {
+	// Strip port if present
+	if colonPos := strings.LastIndex(host, ":"); colonPos != -1 {
+		host = host[:colonPos]
+	}
+	return strings.EqualFold(host, s.serverName)
+}
+
+// handleClientSetup handles client setup routes for server.name
+func (s *Server) handleClientSetup(w http.ResponseWriter, r *http.Request) {
+	s.logger.Debug().
+		Str("path", r.URL.Path).
+		Msg("Serving client setup route")
+
+	switch r.URL.Path {
+	case "/ca.crt", "/setup/ca.crt":
+		s.serveRootCertificate(w, r)
+	case "/", "/setup", "/setup/":
+		s.serveSetupPage(w, r)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// serveRootCertificate serves the root CA certificate for installation
+func (s *Server) serveRootCertificate(w http.ResponseWriter, r *http.Request) {
+	// Get root certificate from CA
+	certPEM, err := s.ca.GetRootCertPEM()
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to get root certificate")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Set headers for certificate download
+	w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+	w.Header().Set("Content-Disposition", "attachment; filename=kproxy-root-ca.crt")
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(certPEM); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to write certificate")
+	}
+
+	s.logger.Info().
+		Str("client", s.extractClientIP(r).String()).
+		Msg("Root certificate downloaded")
+}
+
+// serveSetupPage serves the client setup page
+func (s *Server) serveSetupPage(w http.ResponseWriter, r *http.Request) {
+	setupHTML := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>KProxy Client Setup</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
+			min-height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 20px;
+		}
+		.container {
+			background: white;
+			border-radius: 16px;
+			padding: 40px;
+			max-width: 600px;
+			box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+		}
+		.logo { font-size: 48px; text-align: center; margin-bottom: 20px; }
+		h1 { color: #333; margin-bottom: 16px; text-align: center; }
+		p { color: #666; line-height: 1.6; margin-bottom: 24px; }
+		.steps {
+			background: #f8f9fa;
+			padding: 20px;
+			border-radius: 8px;
+			margin-bottom: 24px;
+		}
+		.step {
+			margin-bottom: 16px;
+			padding-left: 24px;
+			position: relative;
+		}
+		.step:before {
+			content: "→";
+			position: absolute;
+			left: 0;
+			color: #667eea;
+			font-weight: bold;
+		}
+		.download-btn {
+			display: block;
+			width: 100%%;
+			padding: 16px;
+			background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
+			color: white;
+			text-align: center;
+			text-decoration: none;
+			border-radius: 8px;
+			font-weight: bold;
+			font-size: 16px;
+			transition: transform 0.2s;
+		}
+		.download-btn:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+		}
+		.info { font-size: 14px; color: #999; margin-top: 24px; text-align: center; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="logo">🔒</div>
+		<h1>KProxy Client Setup</h1>
+		<p>Welcome to KProxy! To use this proxy with HTTPS interception, you need to install the root certificate on your device.</p>
+
+		<div class="steps">
+			<div class="step">Download the root certificate below</div>
+			<div class="step">Install it as a trusted root certificate on your device</div>
+			<div class="step">Configure your device to use this proxy for DNS/HTTP/HTTPS</div>
+		</div>
+
+		<a href="/ca.crt" class="download-btn" download="kproxy-root-ca.crt">
+			Download Root Certificate
+		</a>
+
+		<p class="info">
+			Server: %s<br>
+			Need help? Check the KProxy documentation for installation instructions.
+		</p>
+	</div>
+</body>
+</html>`, s.serverName)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write([]byte(setupHTML)); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to write setup page")
 	}
 }

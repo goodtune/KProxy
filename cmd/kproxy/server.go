@@ -108,6 +108,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	policyEngine, err := policy.NewEngine(
 		store.Usage(), // Only need usage store for facts
+		cfg.Server.Name,
 		opaConfig,
 		logger,
 	)
@@ -262,6 +263,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		HTTPAddr:    fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort),
 		HTTPSAddr:   fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort),
 		AdminDomain: cfg.Server.AdminDomain,
+		ServerName:  cfg.Server.Name,
+		HTTPSPort:   cfg.Server.HTTPSPort,
 	}
 
 	proxyServer := proxy.NewServer(
