@@ -40,7 +40,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 
 	// If dump requested, show full configuration with defaults highlighted
 	if validateDump {
-		fmt.Fprintln(os.Stdout, "\n" + strings.Repeat("=", 80))
+		fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
 		fmt.Fprintln(os.Stdout, "FULL CONFIGURATION (values different from defaults are highlighted)")
 		fmt.Fprintln(os.Stdout, strings.Repeat("=", 80))
 
@@ -244,7 +244,7 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  disabled_hosts", cfg.Response.DisabledHosts, defaultCfg.Response.DisabledHosts, yellow, green)
 	dumpField("  allowed_content_types", cfg.Response.AllowedContentTypes, defaultCfg.Response.AllowedContentTypes, yellow, green)
 
-	fmt.Fprintln(os.Stdout, "\n" + strings.Repeat("=", 80))
+	fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
 }
 
 // dumpField prints a field with color if it differs from default

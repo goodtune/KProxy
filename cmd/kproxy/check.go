@@ -334,7 +334,7 @@ func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, 
 func parseUsageData(usageStr string) (map[string]interface{}, error) {
 	// Default categories with 0 usage
 	usageData := map[string]interface{}{
-		"educational":  map[string]interface{}{"today_minutes": 0},
+		"educational":   map[string]interface{}{"today_minutes": 0},
 		"entertainment": map[string]interface{}{"today_minutes": 0},
 		"social-media":  map[string]interface{}{"today_minutes": 0},
 		"gaming":        map[string]interface{}{"today_minutes": 0},
