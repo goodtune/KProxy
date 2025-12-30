@@ -105,14 +105,7 @@ func runCheckDNS(cmd *cobra.Command, args []string) error {
 	// Create a quiet logger for check mode
 	logger := zerolog.New(os.Stderr).Level(zerolog.ErrorLevel).With().Timestamp().Logger()
 
-	// Initialize minimal storage (for usage tracking in policies)
-	store, err := openStorage(cfg.Storage)
-	if err != nil {
-		return fmt.Errorf("failed to initialize storage: %w", err)
-	}
-	defer store.Close()
-
-	// Initialize Policy Engine
+	// Initialize OPA engine directly (DNS doesn't need storage/usage data)
 	opaConfig := opa.Config{
 		Source:      cfg.Policy.OPAPolicySource,
 		PolicyDir:   cfg.Policy.OPAPolicyDir,
@@ -121,13 +114,42 @@ func runCheckDNS(cmd *cobra.Command, args []string) error {
 		HTTPRetries: cfg.Policy.OPAHTTPRetries,
 	}
 
-	policyEngine, err := policy.NewEngine(store.Usage(), opaConfig, logger)
+	opaEngine, err := opa.NewEngine(opaConfig, logger)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Policy Engine: %w", err)
+		return fmt.Errorf("failed to initialize OPA engine: %w", err)
 	}
 
-	// Get DNS action
-	action := policyEngine.GetDNSAction(clientIP, clientMAC, domain)
+	// Build DNS facts
+	clientMACStr := ""
+	if clientMAC != nil {
+		clientMACStr = clientMAC.String()
+	}
+
+	facts := map[string]interface{}{
+		"client_ip":  clientIP.String(),
+		"client_mac": clientMACStr,
+		"domain":     domain,
+	}
+
+	// Evaluate with OPA
+	ctx := context.Background()
+	actionStr, err := opaEngine.EvaluateDNS(ctx, facts)
+	if err != nil {
+		return fmt.Errorf("OPA evaluation failed: %w", err)
+	}
+
+	// Convert string action to DNSAction
+	var action policy.DNSAction
+	switch actionStr {
+	case "BYPASS":
+		action = policy.DNSActionBypass
+	case "BLOCK":
+		action = policy.DNSActionBlock
+	case "INTERCEPT":
+		action = policy.DNSActionIntercept
+	default:
+		return fmt.Errorf("unknown DNS action from OPA: %s", actionStr)
+	}
 
 	// Display result with colors
 	printDNSResult(domain, clientIP, clientMAC, action)
