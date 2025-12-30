@@ -158,95 +158,34 @@ Email the certificate to yourself, or upload to Dropbox/Google Drive and downloa
 
 ## Windows
 
-### Method 1: Certificate Manager (Recommended)
-
-1. **Copy `root-ca.crt` to the Windows PC**
-
-2. **Right-click the certificate file** → **Install Certificate**
-
-   ![Windows Install Certificate](https://via.placeholder.com/400x200?text=Right-click+Install+Certificate)
-
-3. **Select Store Location:**
-   - For current user only: **Current User**
-   - For all users on PC: **Local Machine** (requires admin)
-
-4. **Click "Next"**
-
-5. **Select "Place all certificates in the following store"**
-
-6. **Click "Browse"** → Select **"Trusted Root Certification Authorities"**
-
-   ![Select Trusted Root](https://via.placeholder.com/400x200?text=Trusted+Root+Certification+Authorities)
-
-7. **Click "Next"** → **Finish**
-
-8. **Security Warning:** Click **"Yes"** when asked if you want to install the certificate
-
-9. **Restart your browser** (Chrome, Edge, etc.)
-
-### Method 2: Command Line (PowerShell)
+### Command Line Installation (PowerShell)
 
 Run as Administrator:
 
 ```powershell
-# Import certificate to Local Machine Trusted Root store
+# Import certificate to Local Machine Trusted Root store (all users)
 Import-Certificate -FilePath "C:\path\to\root-ca.crt" -CertStoreLocation Cert:\LocalMachine\Root
+
+# OR import for current user only
+Import-Certificate -FilePath "C:\path\to\root-ca.crt" -CertStoreLocation Cert:\CurrentUser\Root
 ```
 
-### Method 3: Microsoft Management Console (MMC)
+**Restart your browser** (Chrome, Edge, etc.) after installation.
 
-1. **Press `Win+R`** → Type `mmc` → **Enter**
+### GUI Alternatives
 
-2. **File** → **Add/Remove Snap-in**
+If you prefer graphical installation, Windows provides several methods:
+- **Certificate Manager UI**: Right-click `.crt` file → Install Certificate
+- **Microsoft Management Console (MMC)**: `mmc.exe` with Certificates snap-in
+- **Internet Options**: Control Panel → Internet Options → Content → Certificates
 
-3. **Select "Certificates"** → **Add**
-
-4. **Select account:**
-   - **Computer account** (for all users)
-   - **My user account** (for current user only)
-
-5. **Navigate to:**
-   - **Certificates (Local Computer)** → **Trusted Root Certification Authorities** → **Certificates**
-
-6. **Right-click "Certificates"** → **All Tasks** → **Import**
-
-7. **Browse to `root-ca.crt`** → **Next** → **Finish**
-
-8. **Restart browser**
+Search for "Windows install root certificate" for detailed GUI instructions.
 
 ---
 
 ## macOS
 
-### Method 1: Keychain Access (GUI)
-
-1. **Copy `root-ca.crt` to your Mac**
-
-2. **Double-click the certificate file**
-
-   This opens **Keychain Access**
-
-3. **Select keychain:**
-   - **login** (current user only)
-   - **System** (all users - requires admin password)
-
-4. **Click "Add"**
-
-5. **In Keychain Access**, find the certificate:
-   - Search for "KProxy" or the certificate name
-   - Double-click the certificate
-
-6. **Expand "Trust" section**
-
-7. **For "When using this certificate"**, select **"Always Trust"**
-
-   ![macOS Trust Certificate](https://via.placeholder.com/400x200?text=Always+Trust)
-
-8. **Close the window** → Enter your password to confirm
-
-9. **Restart your browser** (Safari, Chrome, Firefox)
-
-### Method 2: Command Line
+### Command Line Installation
 
 ```bash
 # Install to System keychain (all users - requires sudo)
@@ -256,7 +195,16 @@ sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keyc
 security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain root-ca.crt
 ```
 
+**Restart your browser** (Safari, Chrome, Firefox) after installation.
+
 **Note:** Safari and Chrome use the macOS keychain. Firefox uses its own certificate store (see [Firefox section](#firefox-all-platforms)).
+
+### GUI Alternative
+
+If you prefer graphical installation:
+- **Keychain Access**: Double-click the `.crt` file, add to keychain, then set trust to "Always Trust"
+
+Search for "macOS install root certificate Keychain Access" for detailed GUI instructions.
 
 ---
 
