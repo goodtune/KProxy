@@ -104,6 +104,9 @@ decision := {
 	dev := device.identified_device
 	profile := config.profiles[dev.profile]
 
+	# Time must be allowed (same check as Decision 4)
+	time_is_allowed(profile.time_restrictions, input.time)
+
 	# No matching rules
 	not first_matching_rule(profile.rules, input.host, input.path)
 

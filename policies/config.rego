@@ -26,6 +26,8 @@ profiles := {
 		"name": "Default Profile",
 		"description": "Secure baseline - blocks all traffic",
 		"rules": [],
+		"time_restrictions": {},
+		"usage_limits": {},
 		"default_action": "block",
 	},
 }
