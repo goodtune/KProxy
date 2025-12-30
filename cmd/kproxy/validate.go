@@ -36,7 +36,24 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Check for unknown keys (always, not just with -dump)
+	unknownKeys, err := findUnknownKeys(configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "⚠️  Warning: Could not check for unknown keys: %v\n", err)
+	}
+
 	_, _ = fmt.Fprintf(os.Stdout, "✅ Configuration is valid: %s\n", configPath)
+
+	// Warn about unknown keys
+	if len(unknownKeys) > 0 {
+		red := color.New(color.FgRed, color.Bold)
+		fmt.Fprintln(os.Stdout)
+		red.Fprintf(os.Stdout, "⚠️  WARNING: Found %d unknown configuration key(s):\n", len(unknownKeys))
+		for _, key := range unknownKeys {
+			red.Fprintf(os.Stdout, "   - %s\n", key)
+		}
+		fmt.Fprintln(os.Stdout, "\nThese keys will be ignored and may indicate typos or deprecated settings.")
+	}
 
 	// If dump requested, show full configuration with defaults highlighted
 	if validateDump {
@@ -48,7 +65,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		defaultCfg := getDefaultConfig()
 
 		// Dump configuration
-		dumpConfig(cfg, defaultCfg)
+		dumpConfig(cfg, defaultCfg, unknownKeys)
 	}
 
 	return nil
@@ -146,8 +163,122 @@ func setDefaultsForDump(v *viper.Viper) {
 	v.SetDefault("response_modification.allowed_content_types", []string{"text/html"})
 }
 
+// findUnknownKeys loads the config file and checks for unknown keys
+func findUnknownKeys(configPath string) ([]string, error) {
+	v := viper.New()
+	v.SetConfigFile(configPath)
+
+	if err := v.ReadInConfig(); err != nil {
+		return nil, err
+	}
+
+	// Get all keys from the config file
+	allKeys := v.AllKeys()
+
+	// Build set of valid keys
+	validKeys := getValidKeys()
+
+	// Find unknown keys
+	unknown := []string{}
+	for _, key := range allKeys {
+		if !validKeys[key] {
+			unknown = append(unknown, key)
+		}
+	}
+
+	return unknown, nil
+}
+
+// getValidKeys returns a set of all valid configuration keys
+func getValidKeys() map[string]bool {
+	keys := map[string]bool{
+		// Server
+		"server.dns_port":        true,
+		"server.dns_enable_udp":  true,
+		"server.dns_enable_tcp":  true,
+		"server.http_port":       true,
+		"server.https_port":      true,
+		"server.admin_domain":    true,
+		"server.metrics_port":    true,
+		"server.bind_address":    true,
+		"server.proxy_ip":        true,
+
+		// DNS
+		"dns.upstream_servers":  true,
+		"dns.intercept_ttl":     true,
+		"dns.bypass_ttl_cap":    true,
+		"dns.block_ttl":         true,
+		"dns.upstream_timeout":  true,
+		"dns.global_bypass":     true,
+
+		// DHCP
+		"dhcp.enabled":          true,
+		"dhcp.port":             true,
+		"dhcp.bind_address":     true,
+		"dhcp.server_ip":        true,
+		"dhcp.subnet_mask":      true,
+		"dhcp.gateway":          true,
+		"dhcp.dns_servers":      true,
+		"dhcp.lease_time":       true,
+		"dhcp.range_start":      true,
+		"dhcp.range_end":        true,
+		"dhcp.boot_filename":    true,
+		"dhcp.boot_server_name": true,
+		"dhcp.tftp_ip":          true,
+		"dhcp.boot_uri":         true,
+
+		// TLS
+		"tls.ca_cert":           true,
+		"tls.ca_key":            true,
+		"tls.intermediate_cert": true,
+		"tls.intermediate_key":  true,
+		"tls.cert_cache_size":   true,
+		"tls.cert_cache_ttl":    true,
+		"tls.cert_validity":     true,
+
+		// Storage
+		"storage.type":                   true,
+		"storage.redis.host":             true,
+		"storage.redis.port":             true,
+		"storage.redis.password":         true,
+		"storage.redis.db":               true,
+		"storage.redis.pool_size":        true,
+		"storage.redis.min_idle_conns":   true,
+		"storage.redis.dial_timeout":     true,
+		"storage.redis.read_timeout":     true,
+		"storage.redis.write_timeout":    true,
+
+		// Logging
+		"logging.level":  true,
+		"logging.format": true,
+
+		// Policy
+		"policy.default_action":    true,
+		"policy.default_allow":     true,
+		"policy.use_mac_address":   true,
+		"policy.arp_cache_ttl":     true,
+		"policy.opa_policy_dir":    true,
+		"policy.opa_policy_source": true,
+		"policy.opa_policy_urls":   true,
+		"policy.opa_http_timeout":  true,
+		"policy.opa_http_retries":  true,
+
+		// Usage tracking
+		"usage_tracking.inactivity_timeout":   true,
+		"usage_tracking.min_session_duration": true,
+		"usage_tracking.daily_reset_time":     true,
+
+		// Response modification
+		"response_modification.enabled":              true,
+		"response_modification.disabled_hosts":       true,
+		"response_modification.allowed_content_types": true,
+	}
+
+	return keys
+}
+
 // dumpConfig dumps configuration with color highlighting for non-default values
-func dumpConfig(cfg, defaultCfg *config.Config) {
+func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	// Setup colors (only if terminal supports it)
 	yellow := color.New(color.FgYellow, color.Bold)
 	green := color.New(color.FgGreen)
@@ -244,7 +375,22 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  disabled_hosts", cfg.Response.DisabledHosts, defaultCfg.Response.DisabledHosts, yellow, green)
 	dumpField("  allowed_content_types", cfg.Response.AllowedContentTypes, defaultCfg.Response.AllowedContentTypes, yellow, green)
 
+<<<<<<< HEAD
 	_, _ = fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
+=======
+	// Display unknown keys if any
+	if len(unknownKeys) > 0 {
+		red := color.New(color.FgRed, color.Bold)
+		cyan := color.New(color.FgCyan, color.Bold)
+
+		cyan.Println("\n[UNKNOWN KEYS - These will be ignored!]")
+		for _, key := range unknownKeys {
+			red.Printf("  %s = (unknown key - check for typos)\n", key)
+		}
+	}
+
+	fmt.Fprintln(os.Stdout, "\n" + strings.Repeat("=", 80))
+>>>>>>> 68bd690 (feat: detect and highlight unknown configuration keys)
 }
 
 // dumpField prints a field with color if it differs from default
