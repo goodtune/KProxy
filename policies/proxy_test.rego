@@ -139,7 +139,7 @@ test_decision_default_action if {
 		}
 
 	decision.action == "BLOCK" # profile default_action is "block"
-	contains(decision.reason, "default")
+	decision.reason == "default block (no matching rules)"
 }
 
 # Test 6: Usage limit exceeded should block (using unrestricted profile to avoid time restriction conflicts)
@@ -200,7 +200,7 @@ test_decision_no_time_restrictions if {
 		}
 
 	decision.action == "ALLOW" # unrestricted profile default is "allow"
-	contains(decision.reason, "default")
+	decision.reason == "default allow (no matching rules)"
 }
 
 # Test 8: Weekend should be blocked if not in time restriction days
