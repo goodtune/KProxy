@@ -30,6 +30,10 @@ type Server struct {
 	// Servers
 	udpServer *dns.Server
 	tcpServer *dns.Server
+
+	// Optional pre-created listeners (for systemd socket activation)
+	udpConn net.PacketConn
+	tcpLn   net.Listener
 }
 
 // Config holds DNS server configuration
@@ -90,6 +94,12 @@ func NewServer(config Config, policy *policy.Engine, logger zerolog.Logger) (*Se
 	return s, nil
 }
 
+// SetListeners sets pre-created listeners for systemd socket activation
+func (s *Server) SetListeners(udpConn net.PacketConn, tcpLn net.Listener) {
+	s.udpConn = udpConn
+	s.tcpLn = tcpLn
+}
+
 // Start starts the DNS server
 func (s *Server) Start() error {
 	errChan := make(chan error, 2)
@@ -97,7 +107,17 @@ func (s *Server) Start() error {
 	if s.udpServer != nil {
 		go func() {
 			s.logger.Info().Str("addr", s.udpServer.Addr).Msg("Starting DNS server (UDP)")
-			if err := s.udpServer.ListenAndServe(); err != nil {
+			var err error
+			if s.udpConn != nil {
+				// Use systemd socket-activated connection
+				s.logger.Debug().Msg("Using systemd socket-activated UDP connection")
+				s.udpServer.PacketConn = s.udpConn
+				err = s.udpServer.ActivateAndServe()
+			} else {
+				// Create and bind connection ourselves
+				err = s.udpServer.ListenAndServe()
+			}
+			if err != nil {
 				errChan <- fmt.Errorf("UDP server error: %w", err)
 			}
 		}()
@@ -106,7 +126,17 @@ func (s *Server) Start() error {
 	if s.tcpServer != nil {
 		go func() {
 			s.logger.Info().Str("addr", s.tcpServer.Addr).Msg("Starting DNS server (TCP)")
-			if err := s.tcpServer.ListenAndServe(); err != nil {
+			var err error
+			if s.tcpLn != nil {
+				// Use systemd socket-activated listener
+				s.logger.Debug().Msg("Using systemd socket-activated TCP listener")
+				s.tcpServer.Listener = s.tcpLn
+				err = s.tcpServer.ActivateAndServe()
+			} else {
+				// Create and bind listener ourselves
+				err = s.tcpServer.ListenAndServe()
+			}
+			if err != nil {
 				errChan <- fmt.Errorf("TCP server error: %w", err)
 			}
 		}()

@@ -1,0 +1,41 @@
+[Unit]
+Description=KProxy Socket Activation
+PartOf=kproxy.service
+
+[Socket]
+# HTTP proxy socket
+ListenStream=80
+FileDescriptorName=http
+
+# HTTPS proxy socket
+ListenStream=443
+FileDescriptorName=https
+
+# DNS UDP socket
+ListenDatagram=53
+FileDescriptorName=dns-udp
+
+# DNS TCP socket
+ListenStream=53
+FileDescriptorName=dns-tcp
+
+# Metrics HTTP socket
+ListenStream=9090
+FileDescriptorName=metrics
+
+# DHCP socket (optional - uncomment if using DHCP)
+# ListenDatagram=67
+# FileDescriptorName=dhcp
+
+# Socket options
+# Accept connections from any interface
+BindIPv6Only=both
+
+# Allow address reuse
+ReusePort=true
+
+# Start the service when a connection arrives
+Service=kproxy.service
+
+[Install]
+WantedBy=sockets.target

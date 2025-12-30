@@ -24,6 +24,10 @@ type Server struct {
 	ca           *ca.CA
 	logger       zerolog.Logger
 	adminDomain  string
+
+	// Optional pre-created listeners (for systemd socket activation)
+	httpListener  net.Listener
+	httpsListener net.Listener
 }
 
 // Config holds proxy server configuration
@@ -72,6 +76,12 @@ func NewServer(
 	return s
 }
 
+// SetListeners sets pre-created listeners for systemd socket activation
+func (s *Server) SetListeners(httpLn, httpsLn net.Listener) {
+	s.httpListener = httpLn
+	s.httpsListener = httpsLn
+}
+
 // Start starts the proxy servers
 func (s *Server) Start() error {
 	errChan := make(chan error, 2)
@@ -79,7 +89,16 @@ func (s *Server) Start() error {
 	// Start HTTP server
 	go func() {
 		s.logger.Info().Str("addr", s.httpServer.Addr).Msg("Starting HTTP proxy server")
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if s.httpListener != nil {
+			// Use systemd socket-activated listener
+			s.logger.Debug().Msg("Using systemd socket-activated HTTP listener")
+			err = s.httpServer.Serve(s.httpListener)
+		} else {
+			// Create and bind listener ourselves
+			err = s.httpServer.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			errChan <- fmt.Errorf("HTTP server error: %w", err)
 		}
 	}()
@@ -87,7 +106,18 @@ func (s *Server) Start() error {
 	// Start HTTPS server
 	go func() {
 		s.logger.Info().Str("addr", s.httpsServer.Addr).Msg("Starting HTTPS proxy server")
-		if err := s.httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+		var err error
+		if s.httpsListener != nil {
+			// Use systemd socket-activated listener
+			s.logger.Debug().Msg("Using systemd socket-activated HTTPS listener")
+			// For TLS with pre-created listener, we need to wrap it with TLS
+			tlsListener := tls.NewListener(s.httpsListener, s.httpsServer.TLSConfig)
+			err = s.httpsServer.Serve(tlsListener)
+		} else {
+			// Create and bind listener ourselves
+			err = s.httpsServer.ListenAndServeTLS("", "")
+		}
+		if err != nil && err != http.ErrServerClosed {
 			errChan <- fmt.Errorf("HTTPS server error: %w", err)
 		}
 	}()
