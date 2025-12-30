@@ -16,6 +16,9 @@ WorkingDirectory=/var/lib/kproxy
 # Main service executable
 ExecStart=/usr/local/bin/kproxy -config /etc/kproxy/config.yaml
 
+# Reload configuration (policies only - YAML config requires restart)
+ExecReload=/bin/kill -HUP $MAINPID
+
 # Restart behavior
 Restart=on-failure
 RestartSec=5s

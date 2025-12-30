@@ -316,13 +316,33 @@ func runServer(cmd *cobra.Command, args []string) error {
 		logger.Debug().Msg("Sent systemd ready notification")
 	}
 
-	// Wait for shutdown signal
+	// Wait for signals (shutdown or reload)
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 
-	<-sigChan
+	// Signal handling loop
+	for {
+		sig := <-sigChan
 
-	logger.Info().Msg("Shutdown signal received, gracefully stopping...")
+		switch sig {
+		case syscall.SIGHUP:
+			logger.Info().Msg("SIGHUP received, reloading policies...")
+			if err := policyEngine.Reload(); err != nil {
+				logger.Error().Err(err).Msg("Failed to reload policies")
+			} else {
+				logger.Info().Msg("Policies reloaded successfully")
+			}
+			// Continue running
+			continue
+
+		case os.Interrupt, syscall.SIGTERM:
+			logger.Info().Msg("Shutdown signal received, gracefully stopping...")
+			// Break out of loop to shutdown
+		}
+
+		// Only reached on shutdown signals
+		break
+	}
 
 	// Notify systemd that we're stopping
 	if err := systemd.NotifyStopping(); err != nil {

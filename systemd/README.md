@@ -124,7 +124,7 @@ sudo systemctl stop kproxy.socket
 # Restart service (zero-downtime with socket activation)
 sudo systemctl restart kproxy.service
 
-# Reload configuration (if supported)
+# Reload OPA policies without restart (zero-downtime)
 sudo systemctl reload kproxy.service
 
 # View status
@@ -148,6 +148,45 @@ Systemd will:
 2. Keep sockets open and queue new connections
 3. Start new kproxy.service
 4. Hand off queued connections to new process
+
+### Policy Reload (SIGHUP)
+
+KProxy supports reloading OPA policies without restarting the service:
+
+```bash
+# Reload policies via systemd
+sudo systemctl reload kproxy.service
+
+# Or send SIGHUP directly
+sudo kill -HUP $(pidof kproxy)
+```
+
+What gets reloaded:
+- **OPA Rego policies** (from filesystem or remote URLs)
+- All policy modules are re-parsed and re-compiled
+- Active requests continue without interruption
+
+What does NOT get reloaded:
+- **YAML configuration** (server ports, TLS paths, storage settings)
+- Requires full service restart: `systemctl restart kproxy.service`
+
+This is useful for:
+- Updating device configurations in `policies/config.rego`
+- Modifying access rules and profiles
+- Adjusting usage limits and time restrictions
+- Deploying policy changes without service disruption
+
+Example workflow:
+```bash
+# Edit policy files
+sudo nano /etc/kproxy/policies/config.rego
+
+# Reload policies (near-instant, zero downtime)
+sudo systemctl reload kproxy.service
+
+# Check logs to verify reload
+sudo journalctl -u kproxy.service -n 20
+```
 
 ### Monitoring
 

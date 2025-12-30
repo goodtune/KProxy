@@ -212,8 +212,13 @@ func (e *Engine) makeDeviceKey(clientIP net.IP, clientMAC net.HardwareAddr) stri
 // Reload reloads the OPA policies
 // No longer needs to load database config - just reload OPA policies
 func (e *Engine) Reload() error {
-	// For filesystem policies: OPA will reload on file changes
-	// For remote policies: Can implement periodic re-fetch here
-	e.logger.Info().Msg("Policy reload requested (OPA policies are reloaded automatically)")
+	e.logger.Info().Msg("Policy reload requested - reloading OPA policies")
+
+	if err := e.opaEngine.Reload(); err != nil {
+		e.logger.Error().Err(err).Msg("Failed to reload OPA policies")
+		return fmt.Errorf("failed to reload OPA policies: %w", err)
+	}
+
+	e.logger.Info().Msg("OPA policies reloaded successfully")
 	return nil
 }

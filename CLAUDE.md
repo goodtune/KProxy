@@ -303,8 +303,26 @@ Configuration split between:
 - **Rego policies** (`policies/*.rego`): All access control logic
 
 The YAML config is loaded once at startup. Rego policies can be:
-- **Filesystem**: Auto-reloaded on file changes (development)
+- **Filesystem**: Loaded from local directory (e.g., `/etc/kproxy/policies`)
 - **Remote**: Fetched from HTTPS URLs (production)
+
+### Policy Reload
+
+Policies are loaded at startup and can be reloaded without restarting the service by sending a **SIGHUP** signal:
+
+```bash
+# Reload policies (filesystem or remote)
+sudo systemctl reload kproxy.service   # With systemd
+sudo kill -HUP $(pidof kproxy)        # Direct signal
+
+# The server will:
+# - Re-read policy files from filesystem (if using filesystem source)
+# - Re-fetch policies from remote URLs (if using remote source)
+# - Re-compile all policies
+# - Continue serving requests without downtime
+```
+
+**Note**: Changes to the YAML configuration file (`config.yaml`) require a full service restart.
 
 ## Key Implementation Details
 
