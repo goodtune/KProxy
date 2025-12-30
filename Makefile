@@ -14,8 +14,16 @@ build: tidy
 
 ## test: Run tests
 test: tidy
-	@echo "Running tests..."
+	@echo "Running Go tests..."
 	@go test -v -race -cover ./...
+	@echo ""
+	@echo "Running OPA policy tests..."
+	@if command -v opa >/dev/null 2>&1; then \
+		opa test policies/ --coverage --threshold=96 | jq '.files|with_entries(.value |= .coverage)'; \
+	else \
+		echo "WARNING: opa not installed. Install from https://www.openpolicyagent.org/docs/latest/#running-opa"; \
+		echo "Skipping policy tests..."; \
+	fi
 
 ## lint: Run linters
 lint:
