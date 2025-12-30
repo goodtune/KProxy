@@ -36,13 +36,13 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stdout, "✅ Configuration is valid: %s\n", configPath)
+	_, _ = fmt.Fprintf(os.Stdout, "✅ Configuration is valid: %s\n", configPath)
 
 	// If dump requested, show full configuration with defaults highlighted
 	if validateDump {
-		fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
-		fmt.Fprintln(os.Stdout, "FULL CONFIGURATION (values different from defaults are highlighted)")
-		fmt.Fprintln(os.Stdout, strings.Repeat("=", 80))
+		_, _ = fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
+		_, _ = fmt.Fprintln(os.Stdout, "FULL CONFIGURATION (values different from defaults are highlighted)")
+		_, _ = fmt.Fprintln(os.Stdout, strings.Repeat("=", 80))
 
 		// Get default configuration
 		defaultCfg := getDefaultConfig()
@@ -154,7 +154,7 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	cyan := color.New(color.FgCyan, color.Bold)
 
 	// Server
-	cyan.Println("\n[server]")
+	_, _ = cyan.Println("\n[server]")
 	dumpField("  dns_port", cfg.Server.DNSPort, defaultCfg.Server.DNSPort, yellow, green)
 	dumpField("  dns_enable_udp", cfg.Server.DNSEnableUDP, defaultCfg.Server.DNSEnableUDP, yellow, green)
 	dumpField("  dns_enable_tcp", cfg.Server.DNSEnableTCP, defaultCfg.Server.DNSEnableTCP, yellow, green)
@@ -166,7 +166,7 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  proxy_ip", cfg.Server.ProxyIP, defaultCfg.Server.ProxyIP, yellow, green)
 
 	// DNS
-	cyan.Println("\n[dns]")
+	_, _ = cyan.Println("\n[dns]")
 	dumpField("  upstream_servers", cfg.DNS.UpstreamServers, defaultCfg.DNS.UpstreamServers, yellow, green)
 	dumpField("  intercept_ttl", cfg.DNS.InterceptTTL, defaultCfg.DNS.InterceptTTL, yellow, green)
 	dumpField("  bypass_ttl_cap", cfg.DNS.BypassTTLCap, defaultCfg.DNS.BypassTTLCap, yellow, green)
@@ -175,7 +175,7 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  global_bypass", cfg.DNS.GlobalBypass, defaultCfg.DNS.GlobalBypass, yellow, green)
 
 	// DHCP
-	cyan.Println("\n[dhcp]")
+	_, _ = cyan.Println("\n[dhcp]")
 	dumpField("  enabled", cfg.DHCP.Enabled, defaultCfg.DHCP.Enabled, yellow, green)
 	dumpField("  port", cfg.DHCP.Port, defaultCfg.DHCP.Port, yellow, green)
 	dumpField("  bind_address", cfg.DHCP.BindAddress, defaultCfg.DHCP.BindAddress, yellow, green)
@@ -192,7 +192,7 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  boot_uri", cfg.DHCP.BootURI, defaultCfg.DHCP.BootURI, yellow, green)
 
 	// TLS
-	cyan.Println("\n[tls]")
+	_, _ = cyan.Println("\n[tls]")
 	dumpField("  ca_cert", cfg.TLS.CACert, defaultCfg.TLS.CACert, yellow, green)
 	dumpField("  ca_key", cfg.TLS.CAKey, defaultCfg.TLS.CAKey, yellow, green)
 	dumpField("  intermediate_cert", cfg.TLS.IntermediateCert, defaultCfg.TLS.IntermediateCert, yellow, green)
@@ -202,9 +202,9 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  cert_validity", cfg.TLS.CertValidity, defaultCfg.TLS.CertValidity, yellow, green)
 
 	// Storage
-	cyan.Println("\n[storage]")
+	_, _ = cyan.Println("\n[storage]")
 	dumpField("  type", cfg.Storage.Type, defaultCfg.Storage.Type, yellow, green)
-	cyan.Println("  [storage.redis]")
+	_, _ = cyan.Println("  [storage.redis]")
 	dumpField("    host", cfg.Storage.Redis.Host, defaultCfg.Storage.Redis.Host, yellow, green)
 	dumpField("    port", cfg.Storage.Redis.Port, defaultCfg.Storage.Redis.Port, yellow, green)
 	dumpField("    password", redactPassword(cfg.Storage.Redis.Password), redactPassword(defaultCfg.Storage.Redis.Password), yellow, green)
@@ -216,12 +216,12 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("    write_timeout", cfg.Storage.Redis.WriteTimeout, defaultCfg.Storage.Redis.WriteTimeout, yellow, green)
 
 	// Logging
-	cyan.Println("\n[logging]")
+	_, _ = cyan.Println("\n[logging]")
 	dumpField("  level", cfg.Logging.Level, defaultCfg.Logging.Level, yellow, green)
 	dumpField("  format", cfg.Logging.Format, defaultCfg.Logging.Format, yellow, green)
 
 	// Policy
-	cyan.Println("\n[policy]")
+	_, _ = cyan.Println("\n[policy]")
 	dumpField("  default_action", cfg.Policy.DefaultAction, defaultCfg.Policy.DefaultAction, yellow, green)
 	dumpField("  default_allow", cfg.Policy.DefaultAllow, defaultCfg.Policy.DefaultAllow, yellow, green)
 	dumpField("  use_mac_address", cfg.Policy.UseMACAddress, defaultCfg.Policy.UseMACAddress, yellow, green)
@@ -233,18 +233,18 @@ func dumpConfig(cfg, defaultCfg *config.Config) {
 	dumpField("  opa_http_retries", cfg.Policy.OPAHTTPRetries, defaultCfg.Policy.OPAHTTPRetries, yellow, green)
 
 	// Usage
-	cyan.Println("\n[usage_tracking]")
+	_, _ = cyan.Println("\n[usage_tracking]")
 	dumpField("  inactivity_timeout", cfg.Usage.InactivityTimeout, defaultCfg.Usage.InactivityTimeout, yellow, green)
 	dumpField("  min_session_duration", cfg.Usage.MinSessionDuration, defaultCfg.Usage.MinSessionDuration, yellow, green)
 	dumpField("  daily_reset_time", cfg.Usage.DailyResetTime, defaultCfg.Usage.DailyResetTime, yellow, green)
 
 	// Response modification
-	cyan.Println("\n[response_modification]")
+	_, _ = cyan.Println("\n[response_modification]")
 	dumpField("  enabled", cfg.Response.Enabled, defaultCfg.Response.Enabled, yellow, green)
 	dumpField("  disabled_hosts", cfg.Response.DisabledHosts, defaultCfg.Response.DisabledHosts, yellow, green)
 	dumpField("  allowed_content_types", cfg.Response.AllowedContentTypes, defaultCfg.Response.AllowedContentTypes, yellow, green)
 
-	fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
+	_, _ = fmt.Fprintln(os.Stdout, "\n"+strings.Repeat("=", 80))
 }
 
 // dumpField prints a field with color if it differs from default
@@ -255,9 +255,9 @@ func dumpField(name string, value, defaultValue interface{}, modifiedColor, defa
 	valueStr := fmt.Sprintf("%v", value)
 
 	if isDefault {
-		defaultColor.Printf("%s = %s\n", name, valueStr)
+		_, _ = defaultColor.Printf("%s = %s\n", name, valueStr)
 	} else {
-		modifiedColor.Printf("%s = %s  (modified from default: %v)\n", name, valueStr, defaultValue)
+		_, _ = modifiedColor.Printf("%s = %s  (modified from default: %v)\n", name, valueStr, defaultValue)
 	}
 }
 

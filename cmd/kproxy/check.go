@@ -59,7 +59,9 @@ func init() {
 	// DNS check flags
 	checkDNSCmd.Flags().StringVar(&checkSourceIP, "source-ip", "", "Source IP address (required)")
 	checkDNSCmd.Flags().StringVar(&checkSourceMAC, "source-mac", "", "Source MAC address (optional)")
-	checkDNSCmd.MarkFlagRequired("source-ip")
+	if err := checkDNSCmd.MarkFlagRequired("source-ip"); err != nil {
+		panic(fmt.Sprintf("failed to mark flag as required: %v", err))
+	}
 
 	// HTTP check flags
 	checkHTTPCmd.Flags().StringVar(&checkSourceIP, "source-ip", "", "Source IP address (required)")
@@ -69,7 +71,9 @@ func init() {
 	checkHTTPCmd.Flags().StringVar(&checkMethod, "method", "GET", "HTTP method (GET, POST, PUT, DELETE, etc.)")
 	checkHTTPCmd.Flags().StringVar(&checkUsage, "usage", "", "Current usage in minutes per category (e.g., 'entertainment=45,gaming=30,educational=15')")
 	checkHTTPCmd.Flags().BoolVar(&checkShowFacts, "show-facts", false, "Show the complete facts/input sent to OPA for evaluation")
-	checkHTTPCmd.MarkFlagRequired("source-ip")
+	if err := checkHTTPCmd.MarkFlagRequired("source-ip"); err != nil {
+		panic(fmt.Sprintf("failed to mark flag as required: %v", err))
+	}
 
 	// Add subcommands
 	checkCmd.AddCommand(checkDNSCmd)
@@ -291,9 +295,9 @@ func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, 
 	red := color.New(color.FgRed, color.Bold)
 
 	fmt.Println()
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	cyan.Println("DNS POLICY CHECK")
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("DNS POLICY CHECK")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 
 	fmt.Printf("Domain:     %s\n", domain)
@@ -305,20 +309,20 @@ func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, 
 	}
 	fmt.Println()
 
-	cyan.Print("Decision:   ")
+	_, _ = cyan.Print("Decision:   ")
 	switch action {
 	case policy.DNSActionBypass:
-		green.Println("BYPASS")
+		_, _ = green.Println("BYPASS")
 		fmt.Println("            → Query will be forwarded to upstream DNS")
 		fmt.Println("            → Real IP address will be returned")
 		fmt.Println("            → Traffic will NOT go through KProxy")
 	case policy.DNSActionIntercept:
-		yellow.Println("INTERCEPT")
+		_, _ = yellow.Println("INTERCEPT")
 		fmt.Println("            → KProxy IP will be returned")
 		fmt.Println("            → Traffic will be routed through KProxy")
 		fmt.Println("            → Proxy policies will be evaluated")
 	case policy.DNSActionBlock:
-		red.Println("BLOCK")
+		_, _ = red.Println("BLOCK")
 		fmt.Println("            → DNS query will be blocked")
 		fmt.Println("            → 0.0.0.0 or NXDOMAIN will be returned")
 	default:
@@ -326,7 +330,7 @@ func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, 
 	}
 
 	fmt.Println()
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 }
 
@@ -381,9 +385,9 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 	yellow := color.New(color.FgYellow)
 
 	fmt.Println()
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	cyan.Println("HTTP/PROXY POLICY CHECK")
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("HTTP/PROXY POLICY CHECK")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 
 	fmt.Printf("URL:        %s\n", parsedURL.String())
@@ -428,13 +432,13 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 
 	fmt.Println()
 
-	cyan.Print("Decision:   ")
+	_, _ = cyan.Print("Decision:   ")
 	switch decision.Action {
 	case policy.ActionAllow:
-		green.Println("ALLOW")
+		_, _ = green.Println("ALLOW")
 		fmt.Println("            → Request will be allowed")
 	case policy.ActionBlock:
-		red.Println("BLOCK")
+		_, _ = red.Println("BLOCK")
 		fmt.Println("            → Request will be blocked")
 	default:
 		fmt.Printf("%s\n", decision.Action)
@@ -457,7 +461,7 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 	}
 
 	if decision.InjectTimer {
-		yellow.Printf("Timer:      Yes (Time Remaining: %d minutes)\n", int(decision.TimeRemaining.Minutes()))
+		_, _ = yellow.Printf("Timer:      Yes (Time Remaining: %d minutes)\n", int(decision.TimeRemaining.Minutes()))
 	}
 
 	if decision.BlockPage != "" {
@@ -465,7 +469,7 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 	}
 
 	fmt.Println()
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 }
 
@@ -530,32 +534,23 @@ func parseCheckTime(dayStr, timeStr string) (time.Time, error) {
 	return result, nil
 }
 
-// mockClock implements policy.Clock for testing with custom time
-type mockClock struct {
-	now time.Time
-}
-
-func (c *mockClock) Now() time.Time {
-	return c.now
-}
-
 // printFacts prints the facts being sent to OPA (for debugging)
 func printFacts(facts map[string]interface{}) {
 	cyan := color.New(color.FgCyan, color.Bold)
 	gray := color.New(color.FgHiBlack)
 
 	fmt.Println()
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	cyan.Println("OPA INPUT (facts sent to policy evaluation)")
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("OPA INPUT (facts sent to policy evaluation)")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 
 	// Pretty print the facts
-	gray.Println("JSON representation:")
+	_, _ = gray.Println("JSON representation:")
 	jsonBytes, _ := json.MarshalIndent(facts, "", "  ")
 	fmt.Println(string(jsonBytes))
 
 	fmt.Println()
-	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 }
