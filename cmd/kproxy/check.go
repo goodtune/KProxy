@@ -14,8 +14,6 @@ import (
 	"github.com/goodtune/kproxy/internal/config"
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/policy/opa"
-	"github.com/goodtune/kproxy/internal/storage"
-	"github.com/goodtune/kproxy/internal/storage/redis"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
