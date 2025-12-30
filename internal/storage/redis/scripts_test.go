@@ -63,7 +63,7 @@ func TestUpsertSessionScript(t *testing.T) {
 			activeSet := "kproxy:sessions:active"
 			deviceKey := "kproxy:sessions:device:" + tt.deviceID + ":" + tt.limitID
 
-			now := time.Now().Unix()
+			now := time.Now().Format(time.RFC3339Nano)
 
 			// Execute the script
 			result := client.Eval(ctx, upsertSessionScript, []string{
@@ -143,7 +143,7 @@ func TestUpsertSessionScript_DeactivateSession(t *testing.T) {
 	activeSet := "kproxy:sessions:active"
 	deviceKey := "kproxy:sessions:device:" + deviceID + ":" + limitID
 
-	now := time.Now().Unix()
+	now := time.Now().Format(time.RFC3339Nano)
 
 	// First, create an active session
 	result := client.Eval(ctx, upsertSessionScript, []string{
@@ -360,8 +360,8 @@ func TestCreateDHCPLeaseScript(t *testing.T) {
 				client.HSet(ctx, macKey, "created_at", tt.existingCreated)
 			}
 
-			expiresAt := time.Now().Add(time.Duration(tt.ttlSeconds) * time.Second).Format(time.RFC3339)
-			updatedAt := time.Now().Format(time.RFC3339)
+			expiresAt := time.Now().Add(time.Duration(tt.ttlSeconds) * time.Second).Format(time.RFC3339Nano)
+			updatedAt := time.Now().Format(time.RFC3339Nano)
 			createdAt := tt.expectCreated
 
 			// Execute the script
