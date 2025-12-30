@@ -94,13 +94,9 @@ func GetListeners() (*Listeners, error) {
 // NotifyReady sends READY=1 notification to systemd
 // This tells systemd that the service has finished starting up
 func NotifyReady() error {
-	sent, err := daemon.SdNotify(false, daemon.SdNotifyReady)
+	_, err := daemon.SdNotify(false, daemon.SdNotifyReady)
 	if err != nil {
 		return fmt.Errorf("failed to send sd_notify: %w", err)
-	}
-	if !sent {
-		// Not running under systemd, or notification not sent
-		// This is not an error
 	}
 	return nil
 }
@@ -108,12 +104,9 @@ func NotifyReady() error {
 // NotifyStopping sends STOPPING=1 notification to systemd
 // This tells systemd that the service is shutting down
 func NotifyStopping() error {
-	sent, err := daemon.SdNotify(false, daemon.SdNotifyStopping)
+	_, err := daemon.SdNotify(false, daemon.SdNotifyStopping)
 	if err != nil {
 		return fmt.Errorf("failed to send sd_notify stopping: %w", err)
-	}
-	if !sent {
-		// Not running under systemd
 	}
 	return nil
 }
@@ -121,12 +114,9 @@ func NotifyStopping() error {
 // NotifyWatchdog sends WATCHDOG=1 notification to systemd
 // This should be called periodically to prevent watchdog timeout
 func NotifyWatchdog() error {
-	sent, err := daemon.SdNotify(false, daemon.SdNotifyWatchdog)
+	_, err := daemon.SdNotify(false, daemon.SdNotifyWatchdog)
 	if err != nil {
 		return fmt.Errorf("failed to send sd_notify watchdog: %w", err)
-	}
-	if !sent {
-		// Not running under systemd
 	}
 	return nil
 }
