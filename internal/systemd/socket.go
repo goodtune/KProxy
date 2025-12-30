@@ -11,12 +11,12 @@ import (
 
 // Listeners holds all systemd-activated listeners
 type Listeners struct {
-	HTTP     net.Listener
-	HTTPS    net.Listener
-	DNSUdp   net.PacketConn
-	DNSTcp   net.Listener
-	DHCP     net.PacketConn
-	Metrics  net.Listener
+	HTTP      net.Listener
+	HTTPS     net.Listener
+	DNSUdp    net.PacketConn
+	DNSTcp    net.Listener
+	DHCP      net.PacketConn
+	Metrics   net.Listener
 	Activated bool
 }
 
