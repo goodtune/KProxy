@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -24,6 +25,9 @@ var (
 	checkSourceMAC string
 	checkDay       string
 	checkTime      string
+	checkMethod    string
+	checkUsage     string
+	checkShowFacts bool
 )
 
 var checkCmd = &cobra.Command{
@@ -47,7 +51,8 @@ var checkHTTPCmd = &cobra.Command{
 	Short: "Check HTTP/proxy policy decision",
 	Long:  `Check what action KProxy would take for a given HTTP/HTTPS request.`,
 	Example: `  kproxy -config config.yaml check http -source-ip 192.168.1.100 http://www.example.com/
-  kproxy check http -source-ip 192.168.1.101 -day monday -time 18:30 http://www.youtube.com/watch`,
+  kproxy check http -source-ip 192.168.1.101 -day monday -time 18:30 http://www.youtube.com/watch
+  kproxy check http -source-ip 192.168.1.101 -method POST -usage "entertainment=45,gaming=30" https://youtube.com/`,
 	Args: cobra.ExactArgs(1),
 	RunE: runCheckHTTP,
 }
@@ -63,6 +68,9 @@ func init() {
 	checkHTTPCmd.Flags().StringVar(&checkSourceMAC, "source-mac", "", "Source MAC address (optional)")
 	checkHTTPCmd.Flags().StringVar(&checkDay, "day", "", "Day of week (monday, tuesday, etc.) - defaults to current day")
 	checkHTTPCmd.Flags().StringVar(&checkTime, "time", "", "Time of day (HH:MM) - defaults to current time")
+	checkHTTPCmd.Flags().StringVar(&checkMethod, "method", "GET", "HTTP method (GET, POST, PUT, DELETE, etc.)")
+	checkHTTPCmd.Flags().StringVar(&checkUsage, "usage", "", "Current usage in minutes per category (e.g., 'entertainment=45,gaming=30,educational=15')")
+	checkHTTPCmd.Flags().BoolVar(&checkShowFacts, "show-facts", false, "Show the complete facts/input sent to OPA for evaluation")
 	checkHTTPCmd.MarkFlagRequired("source-ip")
 
 	// Add subcommands
@@ -164,6 +172,22 @@ func runCheckHTTP(cmd *cobra.Command, args []string) error {
 		checkDateTime = time.Now()
 	}
 
+	// Parse usage data (if provided)
+	usageData, err := parseUsageData(checkUsage)
+	if err != nil {
+		return fmt.Errorf("invalid usage data: %w", err)
+	}
+
+	// Validate method
+	method := strings.ToUpper(checkMethod)
+	validMethods := map[string]bool{
+		"GET": true, "POST": true, "PUT": true, "DELETE": true,
+		"HEAD": true, "OPTIONS": true, "PATCH": true, "CONNECT": true, "TRACE": true,
+	}
+	if !validMethods[method] {
+		return fmt.Errorf("invalid HTTP method: %s", checkMethod)
+	}
+
 	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -173,14 +197,7 @@ func runCheckHTTP(cmd *cobra.Command, args []string) error {
 	// Create a quiet logger for check mode
 	logger := zerolog.New(os.Stderr).Level(zerolog.ErrorLevel).With().Timestamp().Logger()
 
-	// Initialize minimal storage (for usage tracking in policies)
-	store, err := openStorage(cfg.Storage)
-	if err != nil {
-		return fmt.Errorf("failed to initialize storage: %w", err)
-	}
-	defer store.Close()
-
-	// Initialize Policy Engine
+	// Initialize OPA engine directly (no storage needed if we're providing usage data)
 	opaConfig := opa.Config{
 		Source:      cfg.Policy.OPAPolicySource,
 		PolicyDir:   cfg.Policy.OPAPolicyDir,
@@ -189,39 +206,59 @@ func runCheckHTTP(cmd *cobra.Command, args []string) error {
 		HTTPRetries: cfg.Policy.OPAHTTPRetries,
 	}
 
-	policyEngine, err := policy.NewEngine(store.Usage(), opaConfig, logger)
+	opaEngine, err := opa.NewEngine(opaConfig, logger)
 	if err != nil {
-		return fmt.Errorf("failed to initialize Policy Engine: %w", err)
+		return fmt.Errorf("failed to initialize OPA engine: %w", err)
 	}
 
-	// Set custom clock for time-based policies
-	policyEngine.SetClock(&mockClock{now: checkDateTime})
-
-	// Build proxy request
-	host := parsedURL.Host
-	if parsedURL.Port() == "" {
-		if parsedURL.Scheme == "https" {
-			host = host + ":443"
-		} else {
-			host = host + ":80"
-		}
+	// Build facts manually (bypassing the policy engine's fact gathering)
+	clientMACStr := ""
+	if clientMAC != nil {
+		clientMACStr = clientMAC.String()
 	}
 
-	req := &policy.ProxyRequest{
-		ClientIP:  clientIP,
-		ClientMAC: clientMAC,
-		Host:      parsedURL.Hostname(),
-		Path:      parsedURL.Path,
-		Method:    "GET",
-		UserAgent: "kproxy-check",
-		Encrypted: parsedURL.Scheme == "https",
+	currentTime := map[string]interface{}{
+		"day_of_week": int(checkDateTime.Weekday()),
+		"hour":        checkDateTime.Hour(),
+		"minute":      checkDateTime.Minute(),
 	}
 
-	// Evaluate policy
-	decision := policyEngine.Evaluate(req)
+	facts := map[string]interface{}{
+		"client_ip":  clientIP.String(),
+		"client_mac": clientMACStr,
+		"host":       parsedURL.Hostname(),
+		"path":       parsedURL.Path,
+		"method":     method,
+		"time":       currentTime,
+		"usage":      usageData,
+	}
+
+	// Display facts being sent to OPA (if requested)
+	if checkShowFacts {
+		printFacts(facts)
+	}
+
+	// Evaluate with OPA directly
+	ctx := context.Background()
+	opaDecision, err := opaEngine.EvaluateProxy(ctx, facts)
+	if err != nil {
+		return fmt.Errorf("OPA evaluation failed: %w", err)
+	}
+
+	// Convert OPA decision to PolicyDecision
+	decision := &policy.PolicyDecision{
+		Action:        policy.Action(opaDecision.Action),
+		Reason:        opaDecision.Reason,
+		BlockPage:     opaDecision.BlockPage,
+		MatchedRuleID: opaDecision.MatchedRuleID,
+		Category:      opaDecision.Category,
+		InjectTimer:   opaDecision.InjectTimer,
+		TimeRemaining: time.Duration(opaDecision.TimeRemainingMinutes) * time.Minute,
+		UsageLimitID:  opaDecision.UsageLimitID,
+	}
 
 	// Display result with colors
-	printHTTPResult(parsedURL, clientIP, clientMAC, checkDateTime, decision)
+	printHTTPResult(parsedURL, clientIP, clientMAC, checkDateTime, method, usageData, decision)
 
 	return nil
 }
@@ -273,8 +310,51 @@ func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, 
 	fmt.Println()
 }
 
+// parseUsageData parses the usage flag into a map of category usage
+func parseUsageData(usageStr string) (map[string]interface{}, error) {
+	// Default categories with 0 usage
+	usageData := map[string]interface{}{
+		"educational":  map[string]interface{}{"today_minutes": 0},
+		"entertainment": map[string]interface{}{"today_minutes": 0},
+		"social-media":  map[string]interface{}{"today_minutes": 0},
+		"gaming":        map[string]interface{}{"today_minutes": 0},
+	}
+
+	if usageStr == "" {
+		return usageData, nil
+	}
+
+	// Parse comma-separated key=value pairs
+	pairs := strings.Split(usageStr, ",")
+	for _, pair := range pairs {
+		parts := strings.Split(strings.TrimSpace(pair), "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid usage format: %s (expected 'category=minutes')", pair)
+		}
+
+		category := strings.TrimSpace(parts[0])
+		minutesStr := strings.TrimSpace(parts[1])
+
+		var minutes int
+		_, err := fmt.Sscanf(minutesStr, "%d", &minutes)
+		if err != nil {
+			return nil, fmt.Errorf("invalid minutes value for category %s: %s", category, minutesStr)
+		}
+
+		if minutes < 0 {
+			return nil, fmt.Errorf("minutes cannot be negative for category %s", category)
+		}
+
+		usageData[category] = map[string]interface{}{
+			"today_minutes": minutes,
+		}
+	}
+
+	return usageData, nil
+}
+
 // printHTTPResult prints the HTTP check result with colors
-func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.HardwareAddr, checkTime time.Time, decision *policy.PolicyDecision) {
+func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.HardwareAddr, checkTime time.Time, method string, usageData map[string]interface{}, decision *policy.PolicyDecision) {
 	cyan := color.New(color.FgCyan, color.Bold)
 	green := color.New(color.FgGreen, color.Bold)
 	red := color.New(color.FgRed, color.Bold)
@@ -289,6 +369,7 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 	fmt.Printf("URL:        %s\n", parsedURL.String())
 	fmt.Printf("Host:       %s\n", parsedURL.Hostname())
 	fmt.Printf("Path:       %s\n", parsedURL.Path)
+	fmt.Printf("Method:     %s\n", method)
 	fmt.Printf("Source IP:  %s\n", clientIP)
 	if clientMAC != nil {
 		fmt.Printf("Source MAC: %s\n", clientMAC)
@@ -296,6 +377,35 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 		fmt.Printf("Source MAC: (not provided)\n")
 	}
 	fmt.Printf("Check Time: %s (%s)\n", checkTime.Format("2006-01-02 15:04"), checkTime.Weekday())
+
+	// Display usage data if any non-zero values
+	hasUsage := false
+	for _, v := range usageData {
+		if usageMap, ok := v.(map[string]interface{}); ok {
+			if minutes, ok := usageMap["today_minutes"].(int); ok && minutes > 0 {
+				hasUsage = true
+				break
+			}
+		}
+	}
+
+	if hasUsage {
+		fmt.Printf("Usage:      ")
+		first := true
+		for category, v := range usageData {
+			if usageMap, ok := v.(map[string]interface{}); ok {
+				if minutes, ok := usageMap["today_minutes"].(int); ok && minutes > 0 {
+					if !first {
+						fmt.Printf(", ")
+					}
+					fmt.Printf("%s=%dm", category, minutes)
+					first = false
+				}
+			}
+		}
+		fmt.Println()
+	}
+
 	fmt.Println()
 
 	cyan.Print("Decision:   ")
@@ -407,4 +517,25 @@ type mockClock struct {
 
 func (c *mockClock) Now() time.Time {
 	return c.now
+}
+
+// printFacts prints the facts being sent to OPA (for debugging)
+func printFacts(facts map[string]interface{}) {
+	cyan := color.New(color.FgCyan, color.Bold)
+	gray := color.New(color.FgHiBlack)
+
+	fmt.Println()
+	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	cyan.Println("OPA INPUT (facts sent to policy evaluation)")
+	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	// Pretty print the facts
+	gray.Println("JSON representation:")
+	jsonBytes, _ := json.MarshalIndent(facts, "", "  ")
+	fmt.Println(string(jsonBytes))
+
+	fmt.Println()
+	cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
 }
