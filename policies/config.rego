@@ -21,14 +21,14 @@ devices := {}
 #
 # The default profile below blocks all traffic as a secure baseline.
 # Customize this configuration for your network - see docs/policy-tutorial.md
-profiles := {
-	"default": {
-		"name": "Default Profile",
-		"description": "Secure baseline - blocks all traffic",
-		"rules": [],
-		"default_action": "block",
-	},
-}
+profiles := {"default": {
+	"name": "Default Profile",
+	"description": "Secure baseline - blocks all traffic",
+	"rules": [],
+	"time_restrictions": {},
+	"usage_limits": {},
+	"default_action": "block",
+}}
 
 # Global Bypass Domains
 # These domains always bypass the proxy (never intercepted).

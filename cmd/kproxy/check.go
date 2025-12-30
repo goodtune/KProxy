@@ -137,14 +137,14 @@ func runCheckDNS(cmd *cobra.Command, args []string) error {
 
 	// Evaluate with OPA
 	ctx := context.Background()
-	actionStr, err := opaEngine.EvaluateDNS(ctx, facts)
+	dnsDecision, err := opaEngine.EvaluateDNS(ctx, facts)
 	if err != nil {
 		return fmt.Errorf("OPA evaluation failed: %w", err)
 	}
 
 	// Convert string action to DNSAction
 	var action policy.DNSAction
-	switch actionStr {
+	switch dnsDecision.Action {
 	case "BYPASS":
 		action = policy.DNSActionBypass
 	case "BLOCK":
@@ -152,11 +152,11 @@ func runCheckDNS(cmd *cobra.Command, args []string) error {
 	case "INTERCEPT":
 		action = policy.DNSActionIntercept
 	default:
-		return fmt.Errorf("unknown DNS action from OPA: %s", actionStr)
+		return fmt.Errorf("unknown DNS action from OPA: %s", dnsDecision.Action)
 	}
 
 	// Display result with colors
-	printDNSResult(domain, clientIP, clientMAC, action)
+	printDNSResult(domain, clientIP, clientMAC, action, dnsDecision.Reason)
 
 	return nil
 }
@@ -262,8 +262,34 @@ func runCheckHTTP(cmd *cobra.Command, args []string) error {
 		printFacts(facts)
 	}
 
-	// Evaluate with OPA directly
 	ctx := context.Background()
+
+	// STEP 1: Evaluate DNS policy FIRST (matches real-world flow)
+	// In production, DNS is the first decision point
+	dnsFacts := map[string]interface{}{
+		"client_ip":  clientIP.String(),
+		"client_mac": clientMACStr,
+		"domain":     parsedURL.Hostname(),
+	}
+
+	dnsDecision, err := opaEngine.EvaluateDNS(ctx, dnsFacts)
+	if err != nil {
+		return fmt.Errorf("DNS policy evaluation failed: %w", err)
+	}
+
+	// If DNS bypasses, traffic never reaches proxy - show that
+	if dnsDecision.Action == "BYPASS" {
+		printHTTPBypassedAtDNS(parsedURL, clientIP, clientMAC, checkDateTime, method, usageData, dnsDecision.Reason)
+		return nil
+	}
+
+	// If DNS blocks, traffic is blocked at DNS level - show that
+	if dnsDecision.Action == "BLOCK" {
+		printHTTPBlockedAtDNS(parsedURL, clientIP, clientMAC, checkDateTime, method, usageData, dnsDecision.Reason)
+		return nil
+	}
+
+	// STEP 2: Only if DNS said INTERCEPT, evaluate proxy policy
 	opaDecision, err := opaEngine.EvaluateProxy(ctx, facts)
 	if err != nil {
 		return fmt.Errorf("OPA evaluation failed: %w", err)
@@ -288,11 +314,12 @@ func runCheckHTTP(cmd *cobra.Command, args []string) error {
 }
 
 // printDNSResult prints the DNS check result with colors
-func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, action policy.DNSAction) {
+func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, action policy.DNSAction, reason string) {
 	cyan := color.New(color.FgCyan, color.Bold)
 	green := color.New(color.FgGreen, color.Bold)
 	yellow := color.New(color.FgYellow, color.Bold)
 	red := color.New(color.FgRed, color.Bold)
+	gray := color.New(color.FgHiBlack)
 
 	fmt.Println()
 	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -327,6 +354,11 @@ func printDNSResult(domain string, clientIP net.IP, clientMAC net.HardwareAddr, 
 		fmt.Println("            → 0.0.0.0 or NXDOMAIN will be returned")
 	default:
 		fmt.Printf("UNKNOWN (%d)\n", action)
+	}
+
+	if reason != "" {
+		fmt.Printf("Reason:     ")
+		_, _ = gray.Println(reason)
 	}
 
 	fmt.Println()
@@ -377,7 +409,7 @@ func parseUsageData(usageStr string) (map[string]interface{}, error) {
 	return usageData, nil
 }
 
-// printHTTPResult prints the HTTP check result with colors
+// printHTTPResult prints the HTTP check result with colors (only called when DNS returns INTERCEPT)
 func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.HardwareAddr, checkTime time.Time, method string, usageData map[string]interface{}, decision *policy.PolicyDecision) {
 	cyan := color.New(color.FgCyan, color.Bold)
 	green := color.New(color.FgGreen, color.Bold)
@@ -401,6 +433,11 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 		fmt.Printf("Source MAC: (not provided)\n")
 	}
 	fmt.Printf("Check Time: %s (%s)\n", checkTime.Format("2006-01-02 15:04"), checkTime.Weekday())
+
+	// Show DNS decision (this function only called when DNS returns INTERCEPT)
+	gray := color.New(color.FgHiBlack)
+	fmt.Printf("DNS:        ")
+	_, _ = gray.Println("INTERCEPT (traffic routed through proxy)")
 
 	// Display usage data if any non-zero values
 	hasUsage := false
@@ -467,6 +504,91 @@ func printHTTPResult(parsedURL *url.URL, clientIP net.IP, clientMAC net.Hardware
 	if decision.BlockPage != "" {
 		fmt.Printf("Block Page: %s\n", decision.BlockPage)
 	}
+
+	fmt.Println()
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+}
+
+// printHTTPBypassedAtDNS prints when a request would bypass at DNS level
+func printHTTPBypassedAtDNS(parsedURL *url.URL, clientIP net.IP, clientMAC net.HardwareAddr, checkTime time.Time, method string, usageData map[string]interface{}, reason string) {
+	cyan := color.New(color.FgCyan, color.Bold)
+	green := color.New(color.FgGreen, color.Bold)
+	gray := color.New(color.FgHiBlack)
+
+	fmt.Println()
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("HTTP/PROXY POLICY CHECK")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	fmt.Printf("URL:        %s\n", parsedURL.String())
+	fmt.Printf("Host:       %s\n", parsedURL.Hostname())
+	fmt.Printf("Path:       %s\n", parsedURL.Path)
+	fmt.Printf("Method:     %s\n", method)
+	fmt.Printf("Source IP:  %s\n", clientIP)
+	if clientMAC != nil {
+		fmt.Printf("Source MAC: %s\n", clientMAC)
+	} else {
+		fmt.Printf("Source MAC: (not provided)\n")
+	}
+	fmt.Printf("Check Time: %s (%s)\n", checkTime.Format("2006-01-02 15:04"), checkTime.Weekday())
+
+	fmt.Println()
+
+	_, _ = cyan.Print("DNS Decision: ")
+	_, _ = green.Println("BYPASS")
+	if reason != "" {
+		fmt.Printf("              → Reason: %s\n", reason)
+	}
+	fmt.Println("              → DNS will return real IP address")
+	fmt.Println("              → Traffic will NOT go through KProxy proxy")
+	fmt.Println()
+
+	_, _ = gray.Println("Note: Proxy policies are NOT evaluated because traffic bypasses KProxy entirely.")
+
+	fmt.Println()
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+}
+
+// printHTTPBlockedAtDNS prints when a request would be blocked at DNS level
+func printHTTPBlockedAtDNS(parsedURL *url.URL, clientIP net.IP, clientMAC net.HardwareAddr, checkTime time.Time, method string, usageData map[string]interface{}, reason string) {
+	cyan := color.New(color.FgCyan, color.Bold)
+	red := color.New(color.FgRed, color.Bold)
+	gray := color.New(color.FgHiBlack)
+
+	fmt.Println()
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	_, _ = cyan.Println("HTTP/PROXY POLICY CHECK")
+	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	fmt.Printf("URL:        %s\n", parsedURL.String())
+	fmt.Printf("Host:       %s\n", parsedURL.Hostname())
+	fmt.Printf("Path:       %s\n", parsedURL.Path)
+	fmt.Printf("Method:     %s\n", method)
+	fmt.Printf("Source IP:  %s\n", clientIP)
+	if clientMAC != nil {
+		fmt.Printf("Source MAC: %s\n", clientMAC)
+	} else {
+		fmt.Printf("Source MAC: (not provided)\n")
+	}
+	fmt.Printf("Check Time: %s (%s)\n", checkTime.Format("2006-01-02 15:04"), checkTime.Weekday())
+
+	fmt.Println()
+
+	_, _ = cyan.Print("DNS Decision: ")
+	_, _ = red.Println("BLOCK")
+	if reason != "" {
+		fmt.Printf("              → Reason: %s\n", reason)
+	}
+	fmt.Println("              → DNS query will be blocked")
+	fmt.Println("              → 0.0.0.0 or NXDOMAIN will be returned")
+	fmt.Println("              → Traffic never reaches KProxy proxy")
+	fmt.Println()
+
+	_, _ = gray.Println("Note: Proxy policies are NOT evaluated because traffic is blocked at DNS level.")
 
 	fmt.Println()
 	_, _ = cyan.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")

@@ -104,6 +104,9 @@ decision := {
 	dev := device.identified_device
 	profile := config.profiles[dev.profile]
 
+	# Time must be allowed (same check as Decision 4)
+	time_is_allowed(profile.time_restrictions, input.time)
+
 	# No matching rules
 	not first_matching_rule(profile.rules, input.host, input.path)
 
@@ -144,9 +147,9 @@ within_time_window(window, current_time) if {
 }
 
 # Helper: Find first matching rule (rules are evaluated in order)
-first_matching_rule(rules, host, path) := rule if {
-	some rule in rules
-	matches_rule(rule, host, path)
+first_matching_rule(rules, host, path) := matching_rules[0] if {
+	matching_rules := [rule | some rule in rules; matches_rule(rule, host, path)]
+	count(matching_rules) > 0
 }
 
 # Helper: Check if request matches a rule
@@ -154,6 +157,10 @@ matches_rule(rule, host, path) if {
 	# Check if domain matches any in the rule
 	some domain_pattern in rule.domains
 	helpers.match_domain(host, domain_pattern)
+
+	# Check if path matches (if paths specified in rule)
+	# If rule.paths is null/missing, match_path returns true for any path
+	helpers.match_path(path, object.get(rule, "paths", null))
 }
 
 # Helper: Evaluate a matched rule
@@ -271,4 +278,8 @@ default_block_page(action) := "default_block" if {
 
 default_block_page(action) := "" if {
 	action == "ALLOW"
+}
+
+default_block_page(action) := "" if {
+	action == "BYPASS"
 }
