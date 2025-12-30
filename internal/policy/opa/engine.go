@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -30,11 +31,12 @@ type Engine struct {
 	config Config
 	logger zerolog.Logger
 
-	// Compiled queries
+	// Compiled queries (protected by mu)
+	mu         sync.RWMutex
 	dnsQuery   rego.PreparedEvalQuery
 	proxyQuery rego.PreparedEvalQuery
 
-	// Policy modules
+	// Policy modules (protected by mu)
 	modules map[string]*ast.Module
 
 	// HTTP client for remote loading
@@ -317,8 +319,13 @@ func (e *Engine) withModules() []func(*rego.Rego) {
 func (e *Engine) EvaluateDNS(ctx context.Context, input map[string]interface{}) (string, error) {
 	startTime := time.Now()
 
+	// Acquire read lock to safely access prepared query
+	e.mu.RLock()
+	dnsQuery := e.dnsQuery
+	e.mu.RUnlock()
+
 	// Evaluate the query
-	results, err := e.dnsQuery.Eval(ctx, rego.EvalInput(input))
+	results, err := dnsQuery.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
 		return "", fmt.Errorf("DNS query evaluation failed: %w", err)
 	}
@@ -359,8 +366,13 @@ type ProxyDecision struct {
 func (e *Engine) EvaluateProxy(ctx context.Context, input map[string]interface{}) (*ProxyDecision, error) {
 	startTime := time.Now()
 
+	// Acquire read lock to safely access prepared query
+	e.mu.RLock()
+	proxyQuery := e.proxyQuery
+	e.mu.RUnlock()
+
 	// Evaluate the query
-	results, err := e.proxyQuery.Eval(ctx, rego.EvalInput(input))
+	results, err := proxyQuery.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
 		return nil, fmt.Errorf("proxy query evaluation failed: %w", err)
 	}
@@ -394,6 +406,10 @@ func (e *Engine) EvaluateProxy(ctx context.Context, input map[string]interface{}
 // Reload reloads all policies
 func (e *Engine) Reload() error {
 	e.logger.Info().Msg("Reloading OPA policies")
+
+	// Acquire write lock to safely modify engine state
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	// Clear existing modules
 	e.modules = make(map[string]*ast.Module)
