@@ -21,13 +21,21 @@ Unlike traditional parental controls, KProxy uses **policy-as-code** with OPA, g
 ## Key Features
 
 ✨ **Policy-Based Control** - Define access rules in declarative Rego code
+
 🕐 **Time-Based Restrictions** - Allow access only during specific hours
+
 📊 **Usage Tracking & Limits** - Track and limit daily usage by category
+
 🔒 **HTTPS Interception** - Transparent TLS termination with dynamic certificates
+
 🌐 **Embedded DNS Server** - Single-point configuration for network clients
+
 🚫 **Ad Blocking** - Block ad domains like Pi-hole
+
 🏦 **Bypass Sensitive Sites** - Avoid MITM on banking and critical services
+
 📈 **Prometheus Metrics** - Built-in observability and monitoring
+
 🗃️ **Redis Storage** - Fast, scalable operational data storage
 
 ## Quick Start
@@ -45,16 +53,20 @@ make build
 # 3. Generate CA certificates
 sudo make generate-ca
 
-# 4. Configure
+# 4. Install to system paths
+sudo make install
+
+# 5. Configure
 sudo mkdir -p /etc/kproxy/policies
 sudo cp configs/config.example.yaml /etc/kproxy/config.yaml
 sudo cp policies/*.rego /etc/kproxy/policies/
 
-# 5. Edit your policies
+# 6. Edit your policies
 sudo nano /etc/kproxy/policies/config.rego
 
-# 6. Run
-sudo ./bin/kproxy -config /etc/kproxy/config.yaml
+# 7. Enable and start service
+sudo systemctl enable kproxy
+sudo systemctl start kproxy
 ```
 
 ## Documentation

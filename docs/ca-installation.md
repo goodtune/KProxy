@@ -2,6 +2,79 @@
 
 For KProxy to intercept and inspect HTTPS traffic, client devices must trust the KProxy root Certificate Authority (CA). This guide provides step-by-step instructions for installing the root CA certificate on various platforms.
 
+---
+
+## ⚠️ CRITICAL SECURITY WARNINGS
+
+**READ THIS BEFORE PROCEEDING**
+
+Installing a root CA certificate grants **significant trust** to the certificate authority. Understand the risks:
+
+### 🔴 What Can Go Wrong
+
+**If the private key (`root-ca.key`) is compromised:**
+- ❌ **Attacker can impersonate ANY website** for devices trusting your CA
+- ❌ **All HTTPS traffic can be intercepted and decrypted** by the attacker
+- ❌ **Banking, email, passwords - everything is vulnerable**
+- ❌ **Certificate warnings will NOT appear** because devices trust the attacker's certificates
+
+**If you install someone else's CA certificate:**
+- ❌ **That person can monitor ALL your HTTPS traffic**
+- ❌ **They can see passwords, credit cards, personal data**
+- ❌ **You will have NO indication this is happening**
+
+### ✅ Safety Requirements
+
+**ONLY proceed if:**
+1. ✅ **You generated this CA yourself** with `make generate-ca`
+2. ✅ **The KProxy server is under YOUR physical control**
+3. ✅ **The private key (`/etc/kproxy/ca/root-ca.key`) has NEVER left the server**
+4. ✅ **You understand you are intercepting your own traffic**
+5. ✅ **You only install on devices YOU own or have permission to monitor**
+
+### 🔒 Security Best Practices
+
+**Protect the private key:**
+```bash
+# Set restrictive permissions
+sudo chmod 600 /etc/kproxy/ca/root-ca.key
+sudo chown root:root /etc/kproxy/ca/root-ca.key
+
+# Secure the CA directory
+sudo chmod 700 /etc/kproxy/ca
+```
+
+**Backup securely:**
+```bash
+# Create encrypted backup
+sudo tar czf kproxy-ca-backup.tar.gz /etc/kproxy/ca
+# Store on encrypted USB or secure offline storage
+# NEVER store in cloud without encryption
+```
+
+**Limit scope:**
+- ✅ Only install on devices you control
+- ✅ Use `bypass_domains` for banking/healthcare in policies
+- ✅ Remove from devices you sell or give away
+- ✅ Rotate the CA periodically (annually)
+
+**NEVER:**
+- ❌ Share your CA certificate with friends/family for their networks (they should generate their own)
+- ❌ Upload the private key (`.key` file) anywhere
+- ❌ Install a CA from an untrusted source
+- ❌ Use KProxy on devices you don't own without explicit permission
+
+### ⚖️ Legal & Ethical Considerations
+
+- **Only monitor networks and devices you own or have explicit permission to monitor**
+- **Inform users that traffic is being monitored** (especially minors - parental controls are legal, but deception is not)
+- **Comply with applicable laws** regarding interception and data privacy (GDPR, COPPA, wiretapping laws, etc.)
+- **Respect privacy** - even with permission, don't abuse monitoring capabilities
+
+**This is a tool for legitimate parental controls and network management. Misuse can violate laws and trust.**
+
+---
+
 ## Table of Contents
 
 - [Overview](#overview)
