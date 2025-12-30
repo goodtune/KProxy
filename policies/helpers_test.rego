@@ -18,8 +18,10 @@ test_match_domain_wildcard_subdomain if {
 	helpers.match_domain("www.example.com", "*.example.com")
 }
 
-test_match_domain_wildcard_multiple_levels if {
-	helpers.match_domain("sub.www.example.com", "*.example.com")
+test_match_domain_wildcard_no_match_multiple_levels if {
+	# Wildcard * only matches one subdomain level, not multiple
+	# For multiple levels, use suffix matching (.example.com)
+	not helpers.match_domain("sub.www.example.com", "*.example.com")
 }
 
 test_match_domain_wildcard_no_match_parent if {
@@ -321,8 +323,19 @@ test_match_path_glob_with_query_string if {
 	helpers.match_path("/watch?v=abc123", ["/watch*"])
 }
 
-test_match_path_glob_education_path if {
-	helpers.match_path("/education/math/algebra", ["/education/*"])
+test_match_path_glob_education_path_single_level if {
+	# * matches only one path segment
+	helpers.match_path("/education/math", ["/education/*"])
+}
+
+test_match_path_glob_education_path_no_match_multiple_levels if {
+	# * does not match multiple path segments
+	not helpers.match_path("/education/math/algebra", ["/education/*"])
+}
+
+test_match_path_glob_education_path_double_wildcard if {
+	# ** matches multiple path segments (Ant-style)
+	helpers.match_path("/education/math/algebra", ["/education/**"])
 }
 
 test_match_path_glob_exact_no_wildcard if {
@@ -333,8 +346,19 @@ test_match_path_glob_special_chars_in_path if {
 	helpers.match_path("/api/v2.0/users", ["/api/v2.0/*"])
 }
 
-test_match_path_glob_root_wildcard if {
-	helpers.match_path("/anything/here", ["/*"])
+test_match_path_glob_root_wildcard_single_level if {
+	# /* matches only one segment at root level
+	helpers.match_path("/anything", ["/*"])
+}
+
+test_match_path_glob_root_wildcard_no_match_deep if {
+	# /* does NOT match multiple segments
+	not helpers.match_path("/anything/here", ["/*"])
+}
+
+test_match_path_glob_root_double_wildcard if {
+	# /** matches multiple segments from root
+	helpers.match_path("/anything/here", ["/**"])
 }
 
 test_match_path_glob_combined_with_prefix if {
@@ -348,4 +372,55 @@ test_match_path_multiple_paths if {
 
 test_match_path_no_match_multiple if {
 	not helpers.match_path("/other/path", ["/api/users", "/admin/settings", "/public"])
+}
+
+# Test Ant-style path patterns (* for one segment, ** for multiple)
+test_match_path_ant_single_wildcard_one_level if {
+	# /path/* matches /path/file.xml
+	helpers.match_path("/path/file.xml", ["/path/*"])
+}
+
+test_match_path_ant_single_wildcard_no_match_deep if {
+	# /path/* does NOT match /path/subdir/file.xml
+	not helpers.match_path("/path/subdir/file.xml", ["/path/*"])
+}
+
+test_match_path_ant_double_wildcard_one_level if {
+	# /path/** matches /path/file.xml
+	helpers.match_path("/path/file.xml", ["/path/**"])
+}
+
+test_match_path_ant_double_wildcard_deep if {
+	# /path/** matches /path/subdir/file.xml
+	helpers.match_path("/path/subdir/file.xml", ["/path/**"])
+}
+
+test_match_path_ant_double_wildcard_very_deep if {
+	# /path/** matches /path/a/b/c/d/file.xml
+	helpers.match_path("/path/a/b/c/d/file.xml", ["/path/**"])
+}
+
+test_match_path_ant_pattern_with_suffix if {
+	# /path/**/*.xml matches /path/subdir/file.xml
+	helpers.match_path("/path/subdir/file.xml", ["/path/**/*.xml"])
+}
+
+test_match_path_ant_pattern_with_suffix_deep if {
+	# /path/**/*.xml matches /path/a/b/c/file.xml
+	helpers.match_path("/path/a/b/c/file.xml", ["/path/**/*.xml"])
+}
+
+test_match_path_ant_pattern_with_suffix_no_match if {
+	# /path/**/*.xml does NOT match /path/subdir/file.txt
+	not helpers.match_path("/path/subdir/file.txt", ["/path/**/*.xml"])
+}
+
+test_match_path_ant_single_at_root if {
+	# /path/*.xml matches /path/file.xml
+	helpers.match_path("/path/file.xml", ["/path/*.xml"])
+}
+
+test_match_path_ant_single_at_root_no_match_deep if {
+	# /path/*.xml does NOT match /path/subdir/file.xml
+	not helpers.match_path("/path/subdir/file.xml", ["/path/*.xml"])
 }

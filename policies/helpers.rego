@@ -10,9 +10,10 @@ match_domain(domain, pattern) if {
 }
 
 # Wildcard match - convert glob pattern to regex
+# * matches only one subdomain level (e.g., *.example.com matches www.example.com but not sub.www.example.com)
 match_domain(domain, pattern) if {
 	contains(pattern, "*")
-	regex_pattern := concat("", ["^", replace_wildcard(pattern), "$"])
+	regex_pattern := concat("", ["^", replace_domain_wildcard(pattern), "$"])
 	regex.match(regex_pattern, lower(domain))
 }
 
@@ -31,13 +32,30 @@ match_domain(domain, pattern) if {
 	endswith(lower(domain), lower(pattern))
 }
 
-# Helper to convert glob wildcards to regex
-replace_wildcard(pattern) := result if {
+# Helper to convert domain glob wildcards to regex
+# * matches only one subdomain level (e.g., *.example.com matches www but not sub.www)
+replace_domain_wildcard(pattern) := result if {
 	# Quote meta characters except *
 	quoted := replace_special_chars(pattern)
 
-	# Replace * with .*
-	result := replace(quoted, "*", ".*")
+	# Replace * with [^.]+ to match one subdomain level (no dots)
+	result := replace(quoted, "*", "[^.]+")
+}
+
+# Helper to convert path glob wildcards to regex (Ant-style)
+# ** matches multiple path segments, * matches one path segment
+replace_path_wildcard(pattern) := result if {
+	# Quote meta characters except *
+	quoted := replace_special_chars(pattern)
+
+	# Replace ** with a placeholder first to avoid conflicts
+	with_double := replace(quoted, "**", "__DOUBLE_WILDCARD__")
+
+	# Replace remaining * with [^/]+ to match one path segment
+	with_single := replace(with_double, "*", "[^/]+")
+
+	# Replace placeholder with .* for double wildcard
+	result := replace(with_single, "__DOUBLE_WILDCARD__", ".*")
 }
 
 # Simplified regex quoting - escape common special chars except *
@@ -129,11 +147,11 @@ match_path(path, rule_paths) if {
 }
 
 match_path(path, rule_paths) if {
-	# Glob-style matching
+	# Glob-style matching (Ant-style: * for one segment, ** for multiple)
 	some rule_path in rule_paths
 	contains(rule_path, "*")
 
-	# Convert to regex pattern
-	pattern := concat("", ["^", replace_wildcard(rule_path), "$"])
+	# Convert to regex pattern using Ant-style wildcards
+	pattern := concat("", ["^", replace_path_wildcard(rule_path), "$"])
 	regex.match(pattern, path)
 }
