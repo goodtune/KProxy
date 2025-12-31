@@ -23,13 +23,15 @@ type Engine struct {
 	usageTracker UsageTracker
 	opaEngine    *opa.Engine
 	clock        Clock
+	serverName   string // Server name for client setup (e.g., "local.kproxy")
 	logger       zerolog.Logger
 }
 
 // NewEngine creates a new fact-based policy engine
-func NewEngine(usageStore storage.UsageStore, opaConfig opa.Config, logger zerolog.Logger) (*Engine, error) {
+func NewEngine(usageStore storage.UsageStore, serverName string, opaConfig opa.Config, logger zerolog.Logger) (*Engine, error) {
 	e := &Engine{
 		usageStore: usageStore,
+		serverName: serverName,
 		clock:      RealClock{}, // Use real time by default
 		logger:     logger.With().Str("component", "policy").Logger(),
 	}
@@ -43,6 +45,7 @@ func NewEngine(usageStore storage.UsageStore, opaConfig opa.Config, logger zerol
 
 	logger.Info().
 		Str("opa_source", opaConfig.Source).
+		Str("server_name", serverName).
 		Msg("Fact-based Policy Engine initialized")
 
 	return e, nil
@@ -140,9 +143,10 @@ func (e *Engine) buildDNSFacts(clientIP net.IP, clientMAC net.HardwareAddr, doma
 	}
 
 	return map[string]interface{}{
-		"client_ip":  clientIP.String(),
-		"client_mac": clientMACStr,
-		"domain":     domain,
+		"client_ip":   clientIP.String(),
+		"client_mac":  clientMACStr,
+		"domain":      domain,
+		"server_name": e.serverName,
 	}
 }
 
@@ -165,13 +169,14 @@ func (e *Engine) buildProxyFacts(req *ProxyRequest) map[string]interface{} {
 	usageFacts := e.gatherUsageFacts(req.ClientIP, req.ClientMAC)
 
 	return map[string]interface{}{
-		"client_ip":  req.ClientIP.String(),
-		"client_mac": clientMACStr,
-		"host":       req.Host,
-		"path":       req.Path,
-		"method":     req.Method,
-		"time":       currentTime,
-		"usage":      usageFacts,
+		"client_ip":   req.ClientIP.String(),
+		"client_mac":  clientMACStr,
+		"host":        req.Host,
+		"path":        req.Path,
+		"method":      req.Method,
+		"time":        currentTime,
+		"usage":       usageFacts,
+		"server_name": e.serverName,
 	}
 }
 

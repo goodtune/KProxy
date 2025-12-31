@@ -347,6 +347,33 @@ sudo kill -HUP $(pidof kproxy)        # Direct signal
 - Intermediate signs leaf certificates on-demand
 - LRU cache (default 1000 entries, 24h TTL)
 
+### Let's Encrypt Integration (Optional)
+- **Purpose**: Obtain publicly trusted certificate for `server.name` (setup page)
+- **Method**: ACME DNS-01 challenge via lego library
+- **Timing**: Runs on service startup if `tls.use_letsencrypt: true`
+- **Process**:
+  1. Creates ACME account with Let's Encrypt
+  2. Initiates DNS-01 challenge for domain ownership
+  3. Creates TXT record via DNS provider API: `_acme-challenge.{domain}`
+  4. Let's Encrypt validates DNS record
+  5. Issues certificate and saves to configured paths
+  6. Server continues normal operation
+- **Logging**: All steps logged with structured logging (zerolog)
+- **Error handling**: Non-fatal - logs error and continues with self-signed CA
+- **Supported DNS providers**: 80+ via lego (Cloudflare, Route53, DigitalOcean, etc.)
+- **Configuration**: See `configs/config.example.yaml` for examples
+- **Renewal**: Manual - re-run service startup when certificate expires
+
+**Benefits**:
+- No browser warnings for setup page
+- No need to install/trust custom CA certificate
+- Professional appearance for home network
+
+**Requirements**:
+- `server.name` must be a publicly resolvable domain you control
+- DNS provider API credentials
+- Server must reach Let's Encrypt API (port 443 outbound)
+
 ### Metrics & Observability
 
 **Prometheus metrics** via `internal/metrics/metrics.go`:

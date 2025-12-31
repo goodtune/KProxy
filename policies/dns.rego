@@ -56,11 +56,20 @@ profile_default_bypass if {
 	profile.default_action == "bypass"
 }
 
+# Priority 0: Always intercept server name for client setup
+decision := {
+	"action": "INTERCEPT",
+	"reason": "kproxy server name (client setup)",
+} if {
+	helpers.match_domain(input.domain, input.server_name)
+}
+
 # Priority 1: Global bypass domains (system-critical services)
 decision := {
 	"action": "BYPASS",
 	"reason": "global bypass domain",
 } if {
+	not helpers.match_domain(input.domain, input.server_name)
 	global_bypass
 }
 
@@ -69,6 +78,7 @@ decision := {
 	"action": "BYPASS",
 	"reason": "profile rule action is bypass",
 } if {
+	not helpers.match_domain(input.domain, input.server_name)
 	not global_bypass
 	profile_has_rule_with_action("bypass")
 }
@@ -78,6 +88,7 @@ decision := {
 	"action": "INTERCEPT",
 	"reason": "profile has matching rule requiring proxy evaluation",
 } if {
+	not helpers.match_domain(input.domain, input.server_name)
 	not global_bypass
 	not profile_has_rule_with_action("bypass")
 	profile_has_matching_rule
@@ -88,6 +99,7 @@ decision := {
 	"action": "BYPASS",
 	"reason": "profile default action is bypass",
 } if {
+	not helpers.match_domain(input.domain, input.server_name)
 	not global_bypass
 	not profile_has_rule_with_action("bypass")
 	not profile_has_matching_rule

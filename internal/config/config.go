@@ -28,6 +28,7 @@ type ServerConfig struct {
 	HTTPPort     int    `mapstructure:"http_port"`
 	HTTPSPort    int    `mapstructure:"https_port"`
 	AdminDomain  string `mapstructure:"admin_domain"` // Domain for admin-related requests (kept for compatibility)
+	Name         string `mapstructure:"name"`         // Server name for client setup (default: local.kproxy)
 	MetricsPort  int    `mapstructure:"metrics_port"`
 	BindAddress  string `mapstructure:"bind_address"`
 	ProxyIP      string `mapstructure:"proxy_ip"` // IP address returned in DNS intercept responses
@@ -63,13 +64,20 @@ type DHCPConfig struct {
 
 // TLSConfig defines certificate authority settings
 type TLSConfig struct {
-	CACert           string `mapstructure:"ca_cert"`
-	CAKey            string `mapstructure:"ca_key"`
-	IntermediateCert string `mapstructure:"intermediate_cert"`
-	IntermediateKey  string `mapstructure:"intermediate_key"`
-	CertCacheSize    int    `mapstructure:"cert_cache_size"`
-	CertCacheTTL     string `mapstructure:"cert_cache_ttl"`
-	CertValidity     string `mapstructure:"cert_validity"`
+	CACert           string            `mapstructure:"ca_cert"`
+	CAKey            string            `mapstructure:"ca_key"`
+	IntermediateCert string            `mapstructure:"intermediate_cert"`
+	IntermediateKey  string            `mapstructure:"intermediate_key"`
+	CertCacheSize    int               `mapstructure:"cert_cache_size"`
+	CertCacheTTL     string            `mapstructure:"cert_cache_ttl"`
+	CertValidity     string            `mapstructure:"cert_validity"`
+	UseLetsEncrypt   bool              `mapstructure:"use_letsencrypt"`   // Use Let's Encrypt for server.name
+	LegoEmail        string            `mapstructure:"lego_email"`        // Email for Let's Encrypt
+	LegoDNSProvider  string            `mapstructure:"lego_dns_provider"` // DNS provider for ACME challenge
+	LegoCredentials  map[string]string `mapstructure:"lego_credentials"`  // DNS provider credentials
+	LegoCertPath     string            `mapstructure:"lego_cert_path"`    // Path to store Let's Encrypt certs
+	LegoKeyPath      string            `mapstructure:"lego_key_path"`     // Path to store Let's Encrypt keys
+	LegoCADirURL     string            `mapstructure:"lego_ca_dir_url"`   // ACME directory URL (default: Let's Encrypt production)
 }
 
 // StorageConfig defines storage backend settings
@@ -172,6 +180,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.http_port", 80)
 	v.SetDefault("server.https_port", 443)
 	v.SetDefault("server.admin_domain", "kproxy.home.local")
+	v.SetDefault("server.name", "local.kproxy")
 	v.SetDefault("server.metrics_port", 9090)
 	v.SetDefault("server.bind_address", "0.0.0.0")
 
@@ -204,6 +213,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tls.cert_cache_size", 1000)
 	v.SetDefault("tls.cert_cache_ttl", "24h")
 	v.SetDefault("tls.cert_validity", "24h")
+	v.SetDefault("tls.use_letsencrypt", false)
+	v.SetDefault("tls.lego_email", "")
+	v.SetDefault("tls.lego_dns_provider", "")
+	v.SetDefault("tls.lego_credentials", map[string]string{})
+	v.SetDefault("tls.lego_cert_path", "/etc/kproxy/certs/letsencrypt.crt")
+	v.SetDefault("tls.lego_key_path", "/etc/kproxy/certs/letsencrypt.key")
+	v.SetDefault("tls.lego_ca_dir_url", "https://acme-v02.api.letsencrypt.org/directory")
 
 	// Storage defaults
 	v.SetDefault("storage.type", "redis")

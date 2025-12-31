@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"os"
@@ -8,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/goodtune/kproxy/internal/acme"
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/config"
 	"github.com/goodtune/kproxy/internal/dhcp"
@@ -96,6 +99,65 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	logger.Info().Msg("Certificate Authority initialized")
 
+	// Obtain and load Let's Encrypt certificate if configured
+	var letsEncryptCert *tls.Certificate
+	if cfg.TLS.UseLetsEncrypt {
+		// Check if we need to obtain a new certificate
+		needsRenewal, reason := checkCertificateRenewal(cfg.TLS.LegoCertPath, cfg.TLS.LegoKeyPath, logger)
+
+		if needsRenewal {
+			logger.Info().
+				Str("domain", cfg.Server.Name).
+				Str("dns_provider", cfg.TLS.LegoDNSProvider).
+				Str("reason", reason).
+				Msg("Let's Encrypt certificate renewal needed, obtaining via ACME DNS-01 challenge")
+
+			acmeClient := acme.NewClient(acme.Config{
+				Email:       cfg.TLS.LegoEmail,
+				DNSProvider: cfg.TLS.LegoDNSProvider,
+				Credentials: cfg.TLS.LegoCredentials,
+				CertPath:    cfg.TLS.LegoCertPath,
+				KeyPath:     cfg.TLS.LegoKeyPath,
+				CADirURL:    cfg.TLS.LegoCADirURL,
+				Domain:      cfg.Server.Name,
+			}, logger)
+
+			if err := acmeClient.ObtainCertificate(); err != nil {
+				logger.Error().
+					Err(err).
+					Str("domain", cfg.Server.Name).
+					Msg("Failed to obtain Let's Encrypt certificate - continuing with self-signed CA")
+			} else {
+				logger.Info().
+					Str("domain", cfg.Server.Name).
+					Str("cert_path", cfg.TLS.LegoCertPath).
+					Str("key_path", cfg.TLS.LegoKeyPath).
+					Msg("Let's Encrypt certificate obtained successfully")
+			}
+		} else {
+			logger.Info().
+				Str("cert_path", cfg.TLS.LegoCertPath).
+				Msg("Existing Let's Encrypt certificate is still valid, skipping renewal")
+		}
+	}
+
+	// Load Let's Encrypt certificate if it exists
+	if cfg.TLS.UseLetsEncrypt {
+		cert, err := tls.LoadX509KeyPair(cfg.TLS.LegoCertPath, cfg.TLS.LegoKeyPath)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("cert_path", cfg.TLS.LegoCertPath).
+				Str("key_path", cfg.TLS.LegoKeyPath).
+				Msg("Failed to load Let's Encrypt certificate - will use self-signed CA for server name")
+		} else {
+			letsEncryptCert = &cert
+			logger.Info().
+				Str("domain", cfg.Server.Name).
+				Msg("Let's Encrypt certificate loaded successfully")
+		}
+	}
+
 	// Initialize Policy Engine (fact-based, no config loading)
 	// Build OPA configuration
 	opaConfig := opa.Config{
@@ -108,6 +170,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	policyEngine, err := policy.NewEngine(
 		store.Usage(), // Only need usage store for facts
+		cfg.Server.Name,
 		opaConfig,
 		logger,
 	)
@@ -262,6 +325,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		HTTPAddr:    fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort),
 		HTTPSAddr:   fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort),
 		AdminDomain: cfg.Server.AdminDomain,
+		ServerName:  cfg.Server.Name,
+		HTTPSPort:   cfg.Server.HTTPSPort,
 	}
 
 	proxyServer := proxy.NewServer(
@@ -270,6 +335,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 		certificateAuthority,
 		logger,
 	)
+
+	// Configure Let's Encrypt certificate if available
+	if letsEncryptCert != nil {
+		proxyServer.SetLetsEncryptCert(letsEncryptCert)
+	}
 
 	// Use systemd socket-activated listeners if available
 	if sdListeners.Activated {
@@ -485,4 +555,84 @@ func detectNetworkConfig() (ip, subnet, gateway string, err error) {
 	}
 
 	return "", "", "", fmt.Errorf("no suitable network configuration found")
+}
+
+// checkCertificateRenewal checks if a Let's Encrypt certificate needs renewal
+// Returns (needsRenewal, reason)
+func checkCertificateRenewal(certPath, keyPath string, logger zerolog.Logger) (bool, string) {
+	// Check if files exist
+	if _, err := os.Stat(certPath); os.IsNotExist(err) {
+		return true, "certificate file does not exist"
+	}
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		return true, "private key file does not exist"
+	}
+
+	// Load the certificate
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Str("cert_path", certPath).
+			Str("key_path", keyPath).
+			Msg("Failed to load existing certificate for renewal check")
+		return true, "failed to load certificate"
+	}
+
+	// Parse the certificate to check expiry
+	if len(cert.Certificate) == 0 {
+		return true, "certificate chain is empty"
+	}
+
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		logger.Warn().
+			Err(err).
+			Msg("Failed to parse certificate for renewal check")
+		return true, "failed to parse certificate"
+	}
+
+	// Check if certificate is expired
+	now := time.Now()
+	if now.After(x509Cert.NotAfter) {
+		logger.Info().
+			Time("expired_at", x509Cert.NotAfter).
+			Msg("Certificate has expired")
+		return true, "certificate has expired"
+	}
+
+	// Check if certificate is not yet valid
+	if now.Before(x509Cert.NotBefore) {
+		logger.Warn().
+			Time("not_before", x509Cert.NotBefore).
+			Msg("Certificate is not yet valid")
+		return true, "certificate is not yet valid"
+	}
+
+	// Calculate remaining validity period
+	totalValidity := x509Cert.NotAfter.Sub(x509Cert.NotBefore)
+	remainingValidity := x509Cert.NotAfter.Sub(now)
+	halfLife := totalValidity / 2
+
+	// Renew if less than half the validity period remains
+	if remainingValidity < halfLife {
+		logger.Info().
+			Dur("total_validity", totalValidity).
+			Dur("remaining_validity", remainingValidity).
+			Dur("renewal_threshold", halfLife).
+			Time("expires_at", x509Cert.NotAfter).
+			Msg("Certificate has less than half its validity remaining")
+		return true, fmt.Sprintf("less than half validity remains (%s remaining, threshold %s)",
+			remainingValidity.Round(time.Hour), halfLife.Round(time.Hour))
+	}
+
+	// Certificate is still valid
+	logger.Info().
+		Time("not_before", x509Cert.NotBefore).
+		Time("not_after", x509Cert.NotAfter).
+		Dur("remaining_validity", remainingValidity).
+		Dur("total_validity", totalValidity).
+		Msg("Certificate is valid and does not need renewal yet")
+
+	return false, ""
 }

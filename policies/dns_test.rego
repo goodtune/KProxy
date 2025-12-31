@@ -15,6 +15,7 @@ mock_config := {"bypass_domains": [
 test_action_bypass_exact if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "ocsp.apple.com",
@@ -28,6 +29,7 @@ test_action_bypass_exact if {
 test_action_bypass_wildcard if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "api.ocsp.digicert.com",
@@ -41,6 +43,7 @@ test_action_bypass_wildcard if {
 test_action_bypass_suffix if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "www.crl.example.com",
@@ -54,6 +57,7 @@ test_action_bypass_suffix if {
 test_action_bypass_suffix_exact if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "crl.example.com",
@@ -67,6 +71,7 @@ test_action_bypass_suffix_exact if {
 test_action_intercept if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "www.example.com",
@@ -82,6 +87,7 @@ test_action_intercept_empty_bypass if {
 
 	result := dns.decision with data.kproxy.config as empty_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "any.domain.com",
@@ -102,6 +108,7 @@ test_action_bypass_multiple_patterns if {
 	# Test exact
 	result1 := dns.decision with data.kproxy.config as multi_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "exact.com",
 		}
@@ -111,6 +118,7 @@ test_action_bypass_multiple_patterns if {
 	# Test wildcard
 	result2 := dns.decision with data.kproxy.config as multi_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "sub.wildcard.com",
 		}
@@ -120,6 +128,7 @@ test_action_bypass_multiple_patterns if {
 	# Test suffix
 	result3 := dns.decision with data.kproxy.config as multi_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "www.suffix.com",
 		}
@@ -131,6 +140,7 @@ test_action_bypass_multiple_patterns if {
 test_action_bypass_case_insensitive if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "OCSP.APPLE.COM",
 		}
@@ -143,6 +153,7 @@ test_action_bypass_case_insensitive if {
 test_action_intercept_subdomain_no_match if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "ocsp.digicert.com", # No wildcard prefix
 		}
@@ -155,6 +166,7 @@ test_action_intercept_subdomain_no_match if {
 test_action_intercept_long_domain if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "very.long.subdomain.example.domain.name.test.com",
 		}
@@ -166,6 +178,7 @@ test_action_intercept_long_domain if {
 test_action_intercept_ip_address if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "1.2.3.4",
 		}
@@ -177,6 +190,7 @@ test_action_intercept_ip_address if {
 test_action_intercept_special_chars if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "my-site.example.com",
 		}
@@ -188,6 +202,7 @@ test_action_intercept_special_chars if {
 test_action_intercept_single_label if {
 	result := dns.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"domain": "localhost",
 		}
@@ -204,13 +219,13 @@ test_action_bypass_suffix_comprehensive if {
 
 	# Test .apple.com suffix
 	result1 := dns.decision with data.kproxy.config as comprehensive_config
-		with input as {"domain": "www.apple.com"}
+		with input as {"domain": "www.apple.com", "server_name": "local.kproxy"}
 	result1.action == "BYPASS"
 	result1.reason == "global bypass domain"
 
 	# Test exact match
 	result2 := dns.decision with data.kproxy.config as comprehensive_config
-		with input as {"domain": "google.com"}
+		with input as {"domain": "google.com", "server_name": "local.kproxy"}
 	result2.action == "BYPASS"
 	result2.reason == "global bypass domain"
 }
@@ -236,6 +251,7 @@ test_action_bypass_by_profile if {
 
 	result := dns.decision with data.kproxy.config as comprehensive_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.50",
 			"client_mac": "",
 			"domain": "example.com",
@@ -270,6 +286,7 @@ test_action_bypass_by_rule if {
 
 	result := dns.decision with data.kproxy.config as comprehensive_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.3.50",
 			"client_mac": "",
 			"domain": "github.com",
@@ -305,6 +322,7 @@ test_profile_bypass_with_block_rule_intercepts if {
 	# github.com should INTERCEPT (not bypass) because there's an explicit rule
 	result := dns.decision with data.kproxy.config as config_bypass_with_block
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "github.com",
@@ -315,10 +333,47 @@ test_profile_bypass_with_block_rule_intercepts if {
 	# other.com should BYPASS because no rule matches and default_action is bypass
 	result2 := dns.decision with data.kproxy.config as config_bypass_with_block
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"client_mac": "",
 			"domain": "other.com",
 		}
 	result2.action == "BYPASS"
 	result2.reason == "profile default action is bypass"
+}
+
+# Test 18: Server name always intercepts for client setup
+test_action_intercept_server_name if {
+	# Test with default server name
+	result := dns.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"client_mac": "",
+			"domain": "local.kproxy",
+			"server_name": "local.kproxy",
+		}
+	result.action == "INTERCEPT"
+	result.reason == "kproxy server name (client setup)"
+
+	# Test with custom server name
+	result2 := dns.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"client_mac": "",
+			"domain": "kproxy.example.com",
+			"server_name": "kproxy.example.com",
+		}
+	result2.action == "INTERCEPT"
+	result2.reason == "kproxy server name (client setup)"
+
+	# Test that other domains are not intercepted as server name
+	result3 := dns.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"client_mac": "",
+			"domain": "other.domain.com",
+			"server_name": "local.kproxy",
+		}
+	result3.action == "INTERCEPT"
+	result3.reason == "default intercept for policy evaluation"
 }

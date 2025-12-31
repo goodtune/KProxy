@@ -27,6 +27,20 @@ import data.kproxy.helpers
 #
 # Configuration comes from data.kproxy.config
 
+# Decision 0: Always allow server name for client setup (regardless of device)
+decision := {
+	"action": "ALLOW",
+	"reason": "kproxy server name (client setup)",
+	"block_page": "",
+	"matched_rule_id": "server-setup",
+	"category": "",
+	"inject_timer": false,
+	"time_remaining_minutes": 0,
+	"usage_limit_id": "",
+} if {
+	helpers.match_domain(input.host, input.server_name)
+}
+
 # Decision 1: Block unknown devices
 decision := {
 	"action": "BLOCK",
@@ -38,6 +52,7 @@ decision := {
 	"time_remaining_minutes": 0,
 	"usage_limit_id": "",
 } if {
+	not helpers.match_domain(input.host, input.server_name)
 	not device.identified_device
 }
 
@@ -52,6 +67,7 @@ decision := {
 	"time_remaining_minutes": 0,
 	"usage_limit_id": "",
 } if {
+	not helpers.match_domain(input.host, input.server_name)
 	dev := device.identified_device
 	not config.profiles[dev.profile]
 }
@@ -67,6 +83,7 @@ decision := {
 	"time_remaining_minutes": 0,
 	"usage_limit_id": "",
 } if {
+	not helpers.match_domain(input.host, input.server_name)
 	dev := device.identified_device
 	profile := config.profiles[dev.profile]
 
@@ -77,6 +94,7 @@ decision := {
 
 # Decision 4: Evaluate rules (if time allowed and rule matches)
 decision := result if {
+	not helpers.match_domain(input.host, input.server_name)
 	dev := device.identified_device
 	profile := config.profiles[dev.profile]
 
@@ -101,6 +119,7 @@ decision := {
 	"time_remaining_minutes": 0,
 	"usage_limit_id": "",
 } if {
+	not helpers.match_domain(input.host, input.server_name)
 	dev := device.identified_device
 	profile := config.profiles[dev.profile]
 
