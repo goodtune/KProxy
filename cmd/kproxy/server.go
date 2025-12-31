@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/goodtune/kproxy/internal/acme"
 	"github.com/goodtune/kproxy/internal/ca"
 	"github.com/goodtune/kproxy/internal/config"
 	"github.com/goodtune/kproxy/internal/dhcp"
@@ -95,6 +96,37 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	logger.Info().Msg("Certificate Authority initialized")
+
+	// Obtain Let's Encrypt certificate if configured
+	if cfg.TLS.UseLetsEncrypt {
+		logger.Info().
+			Str("domain", cfg.Server.Name).
+			Str("dns_provider", cfg.TLS.LegoDNSProvider).
+			Msg("Let's Encrypt is enabled, obtaining certificate via ACME DNS-01 challenge")
+
+		acmeClient := acme.NewClient(acme.Config{
+			Email:       cfg.TLS.LegoEmail,
+			DNSProvider: cfg.TLS.LegoDNSProvider,
+			Credentials: cfg.TLS.LegoCredentials,
+			CertPath:    cfg.TLS.LegoCertPath,
+			KeyPath:     cfg.TLS.LegoKeyPath,
+			CADirURL:    cfg.TLS.LegoCADirURL,
+			Domain:      cfg.Server.Name,
+		}, logger)
+
+		if err := acmeClient.ObtainCertificate(); err != nil {
+			logger.Error().
+				Err(err).
+				Str("domain", cfg.Server.Name).
+				Msg("Failed to obtain Let's Encrypt certificate - continuing with self-signed CA")
+		} else {
+			logger.Info().
+				Str("domain", cfg.Server.Name).
+				Str("cert_path", cfg.TLS.LegoCertPath).
+				Str("key_path", cfg.TLS.LegoKeyPath).
+				Msg("Let's Encrypt certificate obtained successfully")
+		}
+	}
 
 	// Initialize Policy Engine (fact-based, no config loading)
 	// Build OPA configuration
