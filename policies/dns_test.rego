@@ -343,3 +343,39 @@ test_profile_bypass_with_block_rule_intercepts if {
 	result2.action == "BYPASS"
 	result2.reason == "profile default action is bypass"
 }
+
+# Test 18: Server name always intercepts for client setup
+test_action_intercept_server_name if {
+	# Test with default server name
+	result := dns.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"client_mac": "",
+			"domain": "local.kproxy",
+			"server_name": "local.kproxy",
+		}
+	result.action == "INTERCEPT"
+	result.reason == "kproxy server name (client setup)"
+
+	# Test with custom server name
+	result2 := dns.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"client_mac": "",
+			"domain": "kproxy.example.com",
+			"server_name": "kproxy.example.com",
+		}
+	result2.action == "INTERCEPT"
+	result2.reason == "kproxy server name (client setup)"
+
+	# Test that other domains are not intercepted as server name
+	result3 := dns.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"client_mac": "",
+			"domain": "other.domain.com",
+			"server_name": "local.kproxy",
+		}
+	result3.action == "INTERCEPT"
+	result3.reason == "default intercept for policy evaluation"
+}

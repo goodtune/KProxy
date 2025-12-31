@@ -531,3 +531,45 @@ test_profile_default_bypass_with_block_rule if {
 	decision2.action == "BYPASS"
 	decision2.reason == "default bypass (no matching rules)"
 }
+
+# Test 15: Server name always allows for client setup (regardless of device)
+test_decision_allow_server_name if {
+	# Test with unknown device - should still allow server name
+	decision := proxy.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.200", # Unknown device
+			"host": "local.kproxy",
+			"path": "/",
+			"server_name": "local.kproxy",
+			"time": {"day_of_week": 2, "hour": 10, "minute": 0},
+			"usage": {},
+		}
+	decision.action == "ALLOW"
+	decision.reason == "kproxy server name (client setup)"
+	decision.matched_rule_id == "server-setup"
+
+	# Test certificate download endpoint
+	decision2 := proxy.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "local.kproxy",
+			"path": "/ca.crt",
+			"server_name": "local.kproxy",
+			"time": {"day_of_week": 2, "hour": 10, "minute": 0},
+			"usage": {},
+		}
+	decision2.action == "ALLOW"
+
+	# Test with custom server name
+	decision3 := proxy.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.200",
+			"host": "kproxy.example.com",
+			"path": "/setup",
+			"server_name": "kproxy.example.com",
+			"time": {"day_of_week": 2, "hour": 10, "minute": 0},
+			"usage": {},
+		}
+	decision3.action == "ALLOW"
+	decision3.reason == "kproxy server name (client setup)"
+}
