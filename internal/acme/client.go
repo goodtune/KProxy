@@ -11,8 +11,9 @@ import (
 
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
-	"github.com/go-acme/lego/v4/challenge/dns01"
+	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/lego"
+	"github.com/go-acme/lego/v4/providers/dns"
 	"github.com/go-acme/lego/v4/registration"
 	"github.com/rs/zerolog"
 )
@@ -162,7 +163,7 @@ func (c *Client) getDNSProvider() (challenge.Provider, error) {
 
 	// Create provider using environment variables
 	// The lego library will automatically detect the provider from environment
-	provider, err := dns01.NewDNSChallengeProviderByName(c.config.DNSProvider)
+	provider, err := dns.NewDNSChallengeProviderByName(c.config.DNSProvider)
 	if err != nil {
 		return nil, fmt.Errorf("unsupported DNS provider %q: %w", c.config.DNSProvider, err)
 	}
