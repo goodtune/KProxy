@@ -6,6 +6,8 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -64,6 +66,11 @@ func NewClient(config Config, logger zerolog.Logger) *Client {
 
 // ObtainCertificate obtains a certificate from Let's Encrypt using DNS-01 challenge
 func (c *Client) ObtainCertificate() error {
+	// Enable lego library debug logging
+	// The lego library uses standard log package for internal logging
+	log.SetOutput(c.createLegoLogWriter())
+	log.SetFlags(log.LstdFlags)
+
 	c.logger.Info().
 		Str("domain", c.config.Domain).
 		Str("dns_provider", c.config.DNSProvider).
@@ -95,10 +102,19 @@ func (c *Client) ObtainCertificate() error {
 	c.logger.Info().Msg("ACME client created successfully")
 
 	// Get DNS provider
+	c.logger.Info().
+		Str("provider", c.config.DNSProvider).
+		Int("credentials_count", len(c.config.Credentials)).
+		Msg("Configuring DNS challenge provider")
+
 	provider, err := c.getDNSProvider()
 	if err != nil {
 		return fmt.Errorf("failed to get DNS provider: %w", err)
 	}
+
+	c.logger.Info().
+		Str("provider", c.config.DNSProvider).
+		Msg("DNS provider created successfully")
 
 	// Set DNS challenge
 	err = client.Challenge.SetDNS01Provider(provider)
@@ -156,19 +172,92 @@ func (c *Client) ObtainCertificate() error {
 
 // getDNSProvider creates a DNS provider based on configuration
 func (c *Client) getDNSProvider() (challenge.Provider, error) {
+	c.logger.Debug().
+		Str("provider", c.config.DNSProvider).
+		Msg("Setting DNS provider credentials as environment variables")
+
 	// Set environment variables from credentials
+	credKeys := []string{}
 	for key, value := range c.config.Credentials {
+		// Mask the value in logs for security
+		maskedValue := value
+		if len(value) > 8 {
+			maskedValue = value[:4] + "..." + value[len(value)-4:]
+		} else if len(value) > 0 {
+			maskedValue = "***"
+		}
+
+		c.logger.Debug().
+			Str("key", key).
+			Str("value", maskedValue).
+			Msg("Setting credential environment variable")
+
 		os.Setenv(key, value)
+		credKeys = append(credKeys, key)
 	}
+
+	c.logger.Info().
+		Str("provider", c.config.DNSProvider).
+		Strs("credential_keys", credKeys).
+		Msg("Creating DNS provider with credentials")
 
 	// Create provider using environment variables
 	// The lego library will automatically detect the provider from environment
 	provider, err := dns.NewDNSChallengeProviderByName(c.config.DNSProvider)
 	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Str("provider", c.config.DNSProvider).
+			Strs("expected_env_vars", getExpectedEnvVars(c.config.DNSProvider)).
+			Msg("Failed to create DNS provider")
 		return nil, fmt.Errorf("unsupported DNS provider %q: %w", c.config.DNSProvider, err)
 	}
 
+	c.logger.Info().
+		Str("provider", c.config.DNSProvider).
+		Str("provider_type", fmt.Sprintf("%T", provider)).
+		Msg("DNS provider initialized successfully")
+
 	return provider, nil
+}
+
+// getExpectedEnvVars returns the expected environment variables for common DNS providers
+func getExpectedEnvVars(provider string) []string {
+	envVars := map[string][]string{
+		"digitalocean": {"DO_AUTH_TOKEN"},
+		"cloudflare":   {"CLOUDFLARE_EMAIL", "CLOUDFLARE_API_KEY", "CLOUDFLARE_DNS_API_TOKEN"},
+		"route53":      {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"},
+		"gcloud":       {"GCE_PROJECT", "GCE_SERVICE_ACCOUNT_FILE"},
+		"azure":        {"AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_SUBSCRIPTION_ID", "AZURE_TENANT_ID", "AZURE_RESOURCE_GROUP"},
+	}
+
+	if vars, ok := envVars[provider]; ok {
+		return vars
+	}
+	return []string{"(provider-specific - see lego docs)"}
+}
+
+// createLegoLogWriter creates an io.Writer that redirects lego's log output to zerolog
+func (c *Client) createLegoLogWriter() io.Writer {
+	return &legoLogWriter{logger: c.logger}
+}
+
+// legoLogWriter implements io.Writer to redirect lego's standard log output to zerolog
+type legoLogWriter struct {
+	logger zerolog.Logger
+}
+
+func (w *legoLogWriter) Write(p []byte) (n int, err error) {
+	// Remove trailing newline if present
+	msg := string(p)
+	if len(msg) > 0 && msg[len(msg)-1] == '\n' {
+		msg = msg[:len(msg)-1]
+	}
+
+	// Log at info level with prefix to indicate it's from lego
+	w.logger.Info().Str("source", "lego").Msg(msg)
+
+	return len(p), nil
 }
 
 // saveCertificates saves the obtained certificates to disk
