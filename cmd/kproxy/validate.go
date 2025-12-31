@@ -91,6 +91,7 @@ func setDefaultsForDump(v *viper.Viper) {
 	v.SetDefault("server.http_port", 80)
 	v.SetDefault("server.https_port", 443)
 	v.SetDefault("server.admin_domain", "kproxy.home.local")
+	v.SetDefault("server.name", "local.kproxy")
 	v.SetDefault("server.metrics_port", 9090)
 	v.SetDefault("server.bind_address", "0.0.0.0")
 	v.SetDefault("server.proxy_ip", "")
@@ -124,6 +125,13 @@ func setDefaultsForDump(v *viper.Viper) {
 	v.SetDefault("tls.cert_cache_size", 1000)
 	v.SetDefault("tls.cert_cache_ttl", "24h")
 	v.SetDefault("tls.cert_validity", "24h")
+	v.SetDefault("tls.use_letsencrypt", false)
+	v.SetDefault("tls.lego_email", "")
+	v.SetDefault("tls.lego_dns_provider", "")
+	v.SetDefault("tls.lego_credentials", map[string]string{})
+	v.SetDefault("tls.lego_cert_path", "/etc/kproxy/certs/letsencrypt.crt")
+	v.SetDefault("tls.lego_key_path", "/etc/kproxy/certs/letsencrypt.key")
+	v.SetDefault("tls.lego_ca_dir_url", "https://acme-v02.api.letsencrypt.org/directory")
 
 	// Storage defaults
 	v.SetDefault("storage.type", "redis")
@@ -199,6 +207,7 @@ func getValidKeys() map[string]bool {
 		"server.http_port":       true,
 		"server.https_port":      true,
 		"server.admin_domain":    true,
+		"server.name":            true,
 		"server.metrics_port":    true,
 		"server.bind_address":    true,
 		"server.proxy_ip":        true,
@@ -235,6 +244,13 @@ func getValidKeys() map[string]bool {
 		"tls.cert_cache_size":   true,
 		"tls.cert_cache_ttl":    true,
 		"tls.cert_validity":     true,
+		"tls.use_letsencrypt":   true,
+		"tls.lego_email":        true,
+		"tls.lego_dns_provider": true,
+		"tls.lego_credentials":  true,
+		"tls.lego_cert_path":    true,
+		"tls.lego_key_path":     true,
+		"tls.lego_ca_dir_url":   true,
 
 		// Storage
 		"storage.type":                   true,
@@ -292,6 +308,7 @@ func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	dumpField("  http_port", cfg.Server.HTTPPort, defaultCfg.Server.HTTPPort, yellow, green)
 	dumpField("  https_port", cfg.Server.HTTPSPort, defaultCfg.Server.HTTPSPort, yellow, green)
 	dumpField("  admin_domain", cfg.Server.AdminDomain, defaultCfg.Server.AdminDomain, yellow, green)
+	dumpField("  name", cfg.Server.Name, defaultCfg.Server.Name, yellow, green)
 	dumpField("  metrics_port", cfg.Server.MetricsPort, defaultCfg.Server.MetricsPort, yellow, green)
 	dumpField("  bind_address", cfg.Server.BindAddress, defaultCfg.Server.BindAddress, yellow, green)
 	dumpField("  proxy_ip", cfg.Server.ProxyIP, defaultCfg.Server.ProxyIP, yellow, green)
@@ -331,6 +348,13 @@ func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	dumpField("  cert_cache_size", cfg.TLS.CertCacheSize, defaultCfg.TLS.CertCacheSize, yellow, green)
 	dumpField("  cert_cache_ttl", cfg.TLS.CertCacheTTL, defaultCfg.TLS.CertCacheTTL, yellow, green)
 	dumpField("  cert_validity", cfg.TLS.CertValidity, defaultCfg.TLS.CertValidity, yellow, green)
+	dumpField("  use_letsencrypt", cfg.TLS.UseLetsEncrypt, defaultCfg.TLS.UseLetsEncrypt, yellow, green)
+	dumpField("  lego_email", cfg.TLS.LegoEmail, defaultCfg.TLS.LegoEmail, yellow, green)
+	dumpField("  lego_dns_provider", cfg.TLS.LegoDNSProvider, defaultCfg.TLS.LegoDNSProvider, yellow, green)
+	dumpField("  lego_credentials", cfg.TLS.LegoCredentials, defaultCfg.TLS.LegoCredentials, yellow, green)
+	dumpField("  lego_cert_path", cfg.TLS.LegoCertPath, defaultCfg.TLS.LegoCertPath, yellow, green)
+	dumpField("  lego_key_path", cfg.TLS.LegoKeyPath, defaultCfg.TLS.LegoKeyPath, yellow, green)
+	dumpField("  lego_ca_dir_url", cfg.TLS.LegoCADirURL, defaultCfg.TLS.LegoCADirURL, yellow, green)
 
 	// Storage
 	_, _ = cyan.Println("\n[storage]")
