@@ -219,15 +219,13 @@ test_action_bypass_suffix_comprehensive if {
 
 	# Test .apple.com suffix
 	result1 := dns.decision with data.kproxy.config as comprehensive_config
-		with input as {"domain": "www.apple.com"}
-			"server_name": "local.kproxy",
+		with input as {"domain": "www.apple.com", "server_name": "local.kproxy"}
 	result1.action == "BYPASS"
 	result1.reason == "global bypass domain"
 
 	# Test exact match
 	result2 := dns.decision with data.kproxy.config as comprehensive_config
-		with input as {"domain": "google.com"}
-			"server_name": "local.kproxy",
+		with input as {"domain": "google.com", "server_name": "local.kproxy"}
 	result2.action == "BYPASS"
 	result2.reason == "global bypass domain"
 }
