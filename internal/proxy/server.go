@@ -27,6 +27,9 @@ type Server struct {
 	serverName   string // Server name for client setup (e.g., "local.kproxy")
 	httpsPort    int    // HTTPS port for redirect
 
+	// Let's Encrypt certificate for server.name (optional)
+	letsEncryptCert *tls.Certificate
+
 	// Optional pre-created listeners (for systemd socket activation)
 	httpListener  net.Listener
 	httpsListener net.Listener
@@ -74,12 +77,35 @@ func NewServer(
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 		TLSConfig: &tls.Config{
-			GetCertificate: ca.GetCertificate,
+			GetCertificate: s.getCertificate,
 			MinVersion:     tls.VersionTLS12,
 		},
 	}
 
 	return s
+}
+
+// SetLetsEncryptCert sets the Let's Encrypt certificate for server.name
+func (s *Server) SetLetsEncryptCert(cert *tls.Certificate) {
+	s.letsEncryptCert = cert
+	s.logger.Info().
+		Str("server_name", s.serverName).
+		Msg("Let's Encrypt certificate configured for server name")
+}
+
+// getCertificate returns the appropriate certificate based on SNI hostname
+func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	// If we have a Let's Encrypt cert and the SNI matches server.name, use it
+	if s.letsEncryptCert != nil && s.matchesServerName(hello.ServerName) {
+		s.logger.Debug().
+			Str("sni", hello.ServerName).
+			Str("server_name", s.serverName).
+			Msg("Serving Let's Encrypt certificate for server name")
+		return s.letsEncryptCert, nil
+	}
+
+	// Otherwise, generate/retrieve certificate from CA
+	return s.ca.GetCertificate(hello)
 }
 
 // SetListeners sets pre-created listeners for systemd socket activation

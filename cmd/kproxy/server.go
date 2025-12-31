@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -97,7 +98,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	logger.Info().Msg("Certificate Authority initialized")
 
-	// Obtain Let's Encrypt certificate if configured
+	// Obtain and load Let's Encrypt certificate if configured
+	var letsEncryptCert *tls.Certificate
 	if cfg.TLS.UseLetsEncrypt {
 		logger.Info().
 			Str("domain", cfg.Server.Name).
@@ -125,6 +127,23 @@ func runServer(cmd *cobra.Command, args []string) error {
 				Str("cert_path", cfg.TLS.LegoCertPath).
 				Str("key_path", cfg.TLS.LegoKeyPath).
 				Msg("Let's Encrypt certificate obtained successfully")
+		}
+	}
+
+	// Load Let's Encrypt certificate if it exists
+	if cfg.TLS.UseLetsEncrypt {
+		cert, err := tls.LoadX509KeyPair(cfg.TLS.LegoCertPath, cfg.TLS.LegoKeyPath)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("cert_path", cfg.TLS.LegoCertPath).
+				Str("key_path", cfg.TLS.LegoKeyPath).
+				Msg("Failed to load Let's Encrypt certificate - will use self-signed CA for server name")
+		} else {
+			letsEncryptCert = &cert
+			logger.Info().
+				Str("domain", cfg.Server.Name).
+				Msg("Let's Encrypt certificate loaded successfully")
 		}
 	}
 
@@ -305,6 +324,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 		certificateAuthority,
 		logger,
 	)
+
+	// Configure Let's Encrypt certificate if available
+	if letsEncryptCert != nil {
+		proxyServer.SetLetsEncryptCert(letsEncryptCert)
+	}
 
 	// Use systemd socket-activated listeners if available
 	if sdListeners.Activated {
