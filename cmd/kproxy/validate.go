@@ -91,6 +91,7 @@ func setDefaultsForDump(v *viper.Viper) {
 	v.SetDefault("server.http_port", 80)
 	v.SetDefault("server.https_port", 443)
 	v.SetDefault("server.admin_domain", "kproxy.home.local")
+	v.SetDefault("server.name", "local.kproxy")
 	v.SetDefault("server.metrics_port", 9090)
 	v.SetDefault("server.bind_address", "0.0.0.0")
 	v.SetDefault("server.proxy_ip", "")
@@ -124,6 +125,13 @@ func setDefaultsForDump(v *viper.Viper) {
 	v.SetDefault("tls.cert_cache_size", 1000)
 	v.SetDefault("tls.cert_cache_ttl", "24h")
 	v.SetDefault("tls.cert_validity", "24h")
+	v.SetDefault("tls.use_letsencrypt", false)
+	v.SetDefault("tls.lego_email", "")
+	v.SetDefault("tls.lego_dns_provider", "")
+	v.SetDefault("tls.lego_credentials", map[string]string{})
+	v.SetDefault("tls.lego_cert_path", "/etc/kproxy/certs/letsencrypt.crt")
+	v.SetDefault("tls.lego_key_path", "/etc/kproxy/certs/letsencrypt.key")
+	v.SetDefault("tls.lego_ca_dir_url", "https://acme-v02.api.letsencrypt.org/directory")
 
 	// Storage defaults
 	v.SetDefault("storage.type", "redis")
@@ -189,92 +197,61 @@ func findUnknownKeys(configPath string) ([]string, error) {
 	return unknown, nil
 }
 
-// getValidKeys returns a set of all valid configuration keys
+// getValidKeys returns a set of all valid configuration keys by introspecting the Config struct
 func getValidKeys() map[string]bool {
-	keys := map[string]bool{
-		// Server
-		"server.dns_port":        true,
-		"server.dns_enable_udp":  true,
-		"server.dns_enable_tcp":  true,
-		"server.http_port":       true,
-		"server.https_port":      true,
-		"server.admin_domain":    true,
-		"server.metrics_port":    true,
-		"server.bind_address":    true,
-		"server.proxy_ip":        true,
+	keys := make(map[string]bool)
 
-		// DNS
-		"dns.upstream_servers":  true,
-		"dns.intercept_ttl":     true,
-		"dns.bypass_ttl_cap":    true,
-		"dns.block_ttl":         true,
-		"dns.upstream_timeout":  true,
-		"dns.global_bypass":     true,
-
-		// DHCP
-		"dhcp.enabled":          true,
-		"dhcp.port":             true,
-		"dhcp.bind_address":     true,
-		"dhcp.server_ip":        true,
-		"dhcp.subnet_mask":      true,
-		"dhcp.gateway":          true,
-		"dhcp.dns_servers":      true,
-		"dhcp.lease_time":       true,
-		"dhcp.range_start":      true,
-		"dhcp.range_end":        true,
-		"dhcp.boot_filename":    true,
-		"dhcp.boot_server_name": true,
-		"dhcp.tftp_ip":          true,
-		"dhcp.boot_uri":         true,
-
-		// TLS
-		"tls.ca_cert":           true,
-		"tls.ca_key":            true,
-		"tls.intermediate_cert": true,
-		"tls.intermediate_key":  true,
-		"tls.cert_cache_size":   true,
-		"tls.cert_cache_ttl":    true,
-		"tls.cert_validity":     true,
-
-		// Storage
-		"storage.type":                   true,
-		"storage.redis.host":             true,
-		"storage.redis.port":             true,
-		"storage.redis.password":         true,
-		"storage.redis.db":               true,
-		"storage.redis.pool_size":        true,
-		"storage.redis.min_idle_conns":   true,
-		"storage.redis.dial_timeout":     true,
-		"storage.redis.read_timeout":     true,
-		"storage.redis.write_timeout":    true,
-
-		// Logging
-		"logging.level":  true,
-		"logging.format": true,
-
-		// Policy
-		"policy.default_action":    true,
-		"policy.default_allow":     true,
-		"policy.use_mac_address":   true,
-		"policy.arp_cache_ttl":     true,
-		"policy.opa_policy_dir":    true,
-		"policy.opa_policy_source": true,
-		"policy.opa_policy_urls":   true,
-		"policy.opa_http_timeout":  true,
-		"policy.opa_http_retries":  true,
-
-		// Usage tracking
-		"usage_tracking.inactivity_timeout":   true,
-		"usage_tracking.min_session_duration": true,
-		"usage_tracking.daily_reset_time":     true,
-
-		// Response modification
-		"response_modification.enabled":              true,
-		"response_modification.disabled_hosts":       true,
-		"response_modification.allowed_content_types": true,
-	}
+	// Use reflection to walk the Config struct and extract mapstructure tags
+	cfg := config.Config{}
+	extractKeysFromStruct(reflect.TypeOf(cfg), "", keys)
 
 	return keys
+}
+
+// extractKeysFromStruct recursively extracts configuration keys from a struct type
+func extractKeysFromStruct(t reflect.Type, prefix string, keys map[string]bool) {
+	// Handle pointer types
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	// Only process struct types
+	if t.Kind() != reflect.Struct {
+		return
+	}
+
+	// Iterate through all fields
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+
+		// Get the mapstructure tag
+		tag := field.Tag.Get("mapstructure")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		// Build the full key name
+		var key string
+		if prefix == "" {
+			key = tag
+		} else {
+			key = prefix + "." + tag
+		}
+
+		// Add this key to the map
+		keys[key] = true
+
+		// If this field is a struct, recursively extract its keys
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Ptr {
+			fieldType = fieldType.Elem()
+		}
+
+		if fieldType.Kind() == reflect.Struct {
+			// Recurse into nested struct
+			extractKeysFromStruct(fieldType, key, keys)
+		}
+	}
 }
 
 // dumpConfig dumps configuration with color highlighting for non-default values
@@ -292,6 +269,7 @@ func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	dumpField("  http_port", cfg.Server.HTTPPort, defaultCfg.Server.HTTPPort, yellow, green)
 	dumpField("  https_port", cfg.Server.HTTPSPort, defaultCfg.Server.HTTPSPort, yellow, green)
 	dumpField("  admin_domain", cfg.Server.AdminDomain, defaultCfg.Server.AdminDomain, yellow, green)
+	dumpField("  name", cfg.Server.Name, defaultCfg.Server.Name, yellow, green)
 	dumpField("  metrics_port", cfg.Server.MetricsPort, defaultCfg.Server.MetricsPort, yellow, green)
 	dumpField("  bind_address", cfg.Server.BindAddress, defaultCfg.Server.BindAddress, yellow, green)
 	dumpField("  proxy_ip", cfg.Server.ProxyIP, defaultCfg.Server.ProxyIP, yellow, green)
@@ -331,6 +309,13 @@ func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	dumpField("  cert_cache_size", cfg.TLS.CertCacheSize, defaultCfg.TLS.CertCacheSize, yellow, green)
 	dumpField("  cert_cache_ttl", cfg.TLS.CertCacheTTL, defaultCfg.TLS.CertCacheTTL, yellow, green)
 	dumpField("  cert_validity", cfg.TLS.CertValidity, defaultCfg.TLS.CertValidity, yellow, green)
+	dumpField("  use_letsencrypt", cfg.TLS.UseLetsEncrypt, defaultCfg.TLS.UseLetsEncrypt, yellow, green)
+	dumpField("  lego_email", cfg.TLS.LegoEmail, defaultCfg.TLS.LegoEmail, yellow, green)
+	dumpField("  lego_dns_provider", cfg.TLS.LegoDNSProvider, defaultCfg.TLS.LegoDNSProvider, yellow, green)
+	dumpField("  lego_credentials", cfg.TLS.LegoCredentials, defaultCfg.TLS.LegoCredentials, yellow, green)
+	dumpField("  lego_cert_path", cfg.TLS.LegoCertPath, defaultCfg.TLS.LegoCertPath, yellow, green)
+	dumpField("  lego_key_path", cfg.TLS.LegoKeyPath, defaultCfg.TLS.LegoKeyPath, yellow, green)
+	dumpField("  lego_ca_dir_url", cfg.TLS.LegoCADirURL, defaultCfg.TLS.LegoCADirURL, yellow, green)
 
 	// Storage
 	_, _ = cyan.Println("\n[storage]")

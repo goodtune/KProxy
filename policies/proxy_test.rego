@@ -64,6 +64,7 @@ test_decision_unknown_device if {
 	# Don't mock identified_device - it will be undefined
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.200",
 			"host": "github.com",
 			"path": "/",
@@ -80,6 +81,7 @@ test_decision_allow_rule if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "github.com",
 			"path": "/goodtune/kproxy",
@@ -97,6 +99,7 @@ test_decision_block_rule if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "youtube.com",
 			"path": "/watch",
@@ -114,6 +117,7 @@ test_decision_outside_time_window if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "github.com",
 			"path": "/",
@@ -131,6 +135,7 @@ test_decision_default_action if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "example.com",
 			"path": "/",
@@ -170,6 +175,7 @@ test_decision_usage_limit_exceeded if {
 	decision := proxy.decision with data.kproxy.config as config_with_limits
 		with data.kproxy.device.identified_device as limit_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "youtube.com",
 			"path": "/watch",
@@ -192,6 +198,7 @@ test_decision_no_time_restrictions if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_unrestricted_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "example.com",
 			"path": "/",
@@ -208,6 +215,7 @@ test_decision_weekend_blocked if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "github.com",
 			"path": "/",
@@ -224,6 +232,7 @@ test_decision_timer_injection if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "youtube.com",
 			"path": "/watch",
@@ -241,6 +250,7 @@ test_decision_minimal_input if {
 	decision := proxy.decision with data.kproxy.config as mock_config
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "github.com",
 			"path": "/",
@@ -293,6 +303,7 @@ test_decision_path_based_allow if {
 	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "www.youtube.com",
 			"path": "/education/science",
@@ -344,6 +355,7 @@ test_decision_path_based_block if {
 	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "www.youtube.com",
 			"path": "/watch?v=dQw4w9WgXcQ",
@@ -396,6 +408,7 @@ test_decision_path_based_shorts_block if {
 	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "www.youtube.com",
 			"path": "/shorts/abc123",
@@ -447,6 +460,7 @@ test_decision_path_based_regular_video_allow if {
 	decision := proxy.decision with data.kproxy.config as mock_config_with_paths
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "www.youtube.com",
 			"path": "/watch?v=dQw4w9WgXcQ",
@@ -490,6 +504,7 @@ test_profile_default_bypass_with_block_rule if {
 	decision := proxy.decision with data.kproxy.config as config_bypass_with_block
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "github.com",
 			"path": "/",
@@ -505,6 +520,7 @@ test_profile_default_bypass_with_block_rule if {
 	decision2 := proxy.decision with data.kproxy.config as config_bypass_with_block
 		with data.kproxy.device.identified_device as mock_device
 		with input as {
+			"server_name": "local.kproxy",
 			"client_ip": "192.168.1.100",
 			"host": "other.com",
 			"path": "/",
@@ -514,4 +530,46 @@ test_profile_default_bypass_with_block_rule if {
 
 	decision2.action == "BYPASS"
 	decision2.reason == "default bypass (no matching rules)"
+}
+
+# Test 15: Server name always allows for client setup (regardless of device)
+test_decision_allow_server_name if {
+	# Test with unknown device - should still allow server name
+	decision := proxy.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.200", # Unknown device
+			"host": "local.kproxy",
+			"path": "/",
+			"server_name": "local.kproxy",
+			"time": {"day_of_week": 2, "hour": 10, "minute": 0},
+			"usage": {},
+		}
+	decision.action == "ALLOW"
+	decision.reason == "kproxy server name (client setup)"
+	decision.matched_rule_id == "server-setup"
+
+	# Test certificate download endpoint
+	decision2 := proxy.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.100",
+			"host": "local.kproxy",
+			"path": "/ca.crt",
+			"server_name": "local.kproxy",
+			"time": {"day_of_week": 2, "hour": 10, "minute": 0},
+			"usage": {},
+		}
+	decision2.action == "ALLOW"
+
+	# Test with custom server name
+	decision3 := proxy.decision with data.kproxy.config as mock_config
+		with input as {
+			"client_ip": "192.168.1.200",
+			"host": "kproxy.example.com",
+			"path": "/setup",
+			"server_name": "kproxy.example.com",
+			"time": {"day_of_week": 2, "hour": 10, "minute": 0},
+			"usage": {},
+		}
+	decision3.action == "ALLOW"
+	decision3.reason == "kproxy server name (client setup)"
 }

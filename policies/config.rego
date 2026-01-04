@@ -41,3 +41,10 @@ profiles := {"default": {
 #
 # See docs/policy-tutorial.md Step 6 for guidance on bypass domains.
 bypass_domains := []
+
+# Server Name Configuration
+# The server name is used for client setup (certificate download, etc.)
+# This domain is always intercepted and allowed.
+# Default: "local.kproxy" (configured in YAML as server.name)
+# This is a placeholder - the actual value comes from YAML config passed as input
+server_name := "local.kproxy"
