@@ -48,7 +48,7 @@ type Config struct {
 // NewCA creates a new Certificate Authority
 func NewCA(config Config, logger zerolog.Logger) (*CA, error) {
 	ca := &CA{
-		cacheTTL:     config.CertValidity,
+		cacheTTL:     config.CertCacheTTL,
 		certValidity: config.CertValidity,
 		logger:       logger.With().Str("component", "ca").Logger(),
 	}
@@ -134,8 +134,14 @@ func NewCA(config Config, logger zerolog.Logger) (*CA, error) {
 	ca.certCache = cache
 	ca.cacheCapacity = config.CertCacheSize
 
+	// Log initialization - use struct fields which are correctly set
+	rootSubject := "none (external PKI)"
+	if ca.rootCert != nil {
+		rootSubject = ca.rootCert.Subject.CommonName
+	}
+
 	ca.logger.Info().
-		Str("root_subject", rootCert.Subject.CommonName).
+		Str("root_subject", rootSubject).
 		Str("interm_subject", ca.intermCert.Subject.CommonName).
 		Int("cache_size", config.CertCacheSize).
 		Msg("Certificate Authority initialized")

@@ -125,29 +125,38 @@ func (e *Engine) loadPolicies() error {
 	case "remote":
 		return e.loadPoliciesFromRemote()
 	case "both":
-		// Load from both sources
-		var errs []error
+		// Load from both sources - allow partial success
+		var fsLoaded, remoteLoaded bool
 
 		// Load filesystem policies if directory is configured
 		if e.config.PolicyDir != "" {
 			if err := e.loadPoliciesFromFilesystem(); err != nil {
-				errs = append(errs, fmt.Errorf("filesystem: %w", err))
+				e.logger.Warn().Err(err).Msg("Failed to load policies from filesystem")
+			} else {
+				fsLoaded = true
 			}
 		}
 
 		// Load remote policies if URLs are configured
 		if len(e.config.PolicyURLs) > 0 {
 			if err := e.loadPoliciesFromRemote(); err != nil {
-				errs = append(errs, fmt.Errorf("remote: %w", err))
+				e.logger.Warn().Err(err).Msg("Failed to load policies from remote")
+			} else {
+				remoteLoaded = true
 			}
 		}
 
-		// If both failed, return combined error
-		if len(errs) > 0 {
-			if len(errs) == 2 {
-				return fmt.Errorf("failed to load policies from both sources: %v", errs)
-			}
-			return errs[0]
+		// Require at least one source to succeed
+		if !fsLoaded && !remoteLoaded {
+			return fmt.Errorf("failed to load policies from both filesystem and remote sources")
+		}
+
+		if fsLoaded && !remoteLoaded {
+			e.logger.Warn().Msg("Loaded policies from filesystem only (remote failed)")
+		} else if !fsLoaded && remoteLoaded {
+			e.logger.Warn().Msg("Loaded policies from remote only (filesystem failed)")
+		} else {
+			e.logger.Info().Msg("Successfully loaded policies from both filesystem and remote")
 		}
 
 		return nil
