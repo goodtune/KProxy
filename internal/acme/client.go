@@ -105,8 +105,7 @@ func (c *Client) ObtainCertificate() error {
 	// Get DNS provider
 	c.logger.Info().
 		Str("provider", c.config.DNSProvider).
-		Int("credentials_count", len(c.config.Credentials)).
-		Msg("Configuring DNS challenge provider")
+		Msg("Configuring DNS challenge provider from environment variables")
 
 	provider, err := c.getDNSProvider()
 	if err != nil {
