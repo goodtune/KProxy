@@ -24,12 +24,10 @@ import (
 type Config struct {
 	Email       string // Email for Let's Encrypt account
 	DNSProvider string // DNS provider name (e.g., "cloudflare", "route53")
-	// Credentials removed - DNS provider credentials are read from environment variables
-	// See https://go-acme.github.io/lego/dns/ for provider-specific environment variables
-	CertPath string // Path to store certificate
-	KeyPath  string // Path to store private key
-	CADirURL string // ACME directory URL
-	Domain   string // Domain to obtain certificate for
+	CertPath    string // Path to store certificate
+	KeyPath     string // Path to store private key
+	CADirURL    string // ACME directory URL
+	Domain      string // Domain to obtain certificate for
 }
 
 // User implements the ACME user interface
@@ -171,8 +169,6 @@ func (c *Client) ObtainCertificate() error {
 }
 
 // getDNSProvider creates a DNS provider from environment variables
-// Credentials must be provided via environment variables (see systemd EnvironmentFile)
-// See https://go-acme.github.io/lego/dns/ for provider-specific environment variables
 func (c *Client) getDNSProvider() (challenge.Provider, error) {
 	c.logger.Info().
 		Str("provider", c.config.DNSProvider).
@@ -180,7 +176,6 @@ func (c *Client) getDNSProvider() (challenge.Provider, error) {
 		Msg("Creating DNS provider from environment variables")
 
 	// Create provider using environment variables
-	// The lego library will automatically read provider-specific environment variables
 	provider, err := dns.NewDNSChallengeProviderByName(c.config.DNSProvider)
 	if err != nil {
 		c.logger.Error().

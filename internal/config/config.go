@@ -71,13 +71,12 @@ type TLSConfig struct {
 	CertCacheSize    int               `mapstructure:"cert_cache_size"`
 	CertCacheTTL     string `mapstructure:"cert_cache_ttl"`
 	CertValidity     string `mapstructure:"cert_validity"`
-	UseLetsEncrypt   bool   `mapstructure:"use_letsencrypt"`   // Use Let's Encrypt for server.name
-	LegoEmail        string `mapstructure:"lego_email"`        // Email for Let's Encrypt
-	LegoDNSProvider  string `mapstructure:"lego_dns_provider"` // DNS provider for ACME challenge
-	// LegoCredentials removed - use environment variables instead (see systemd EnvironmentFile)
-	LegoCertPath string `mapstructure:"lego_cert_path"` // Path to store Let's Encrypt certs
-	LegoKeyPath  string `mapstructure:"lego_key_path"`  // Path to store Let's Encrypt keys
-	LegoCADirURL string `mapstructure:"lego_ca_dir_url"` // ACME directory URL (default: Let's Encrypt production)
+	UseLetsEncrypt   bool   `mapstructure:"use_letsencrypt"`
+	LegoEmail        string `mapstructure:"lego_email"`
+	LegoDNSProvider  string `mapstructure:"lego_dns_provider"`
+	LegoCertPath     string `mapstructure:"lego_cert_path"`
+	LegoKeyPath      string `mapstructure:"lego_key_path"`
+	LegoCADirURL     string `mapstructure:"lego_ca_dir_url"`
 }
 
 // StorageConfig defines storage backend settings
@@ -216,7 +215,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tls.use_letsencrypt", false)
 	v.SetDefault("tls.lego_email", "")
 	v.SetDefault("tls.lego_dns_provider", "")
-	// lego_credentials removed - credentials provided via environment variables
 	v.SetDefault("tls.lego_cert_path", "/etc/kproxy/certs/letsencrypt.crt")
 	v.SetDefault("tls.lego_key_path", "/etc/kproxy/certs/letsencrypt.key")
 	v.SetDefault("tls.lego_ca_dir_url", "https://acme-v02.api.letsencrypt.org/directory")
