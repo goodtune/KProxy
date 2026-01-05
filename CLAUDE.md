@@ -57,11 +57,14 @@ CA certificates are **automatically generated** on first startup if not found. Y
 sudo make generate-ca    # Generate CA certificates using scripts/generate-ca.sh
 ```
 
-When KProxy starts and doesn't find certificates at the configured paths, it will:
-1. Generate a root CA certificate (valid for 10 years)
-2. Generate an intermediate CA certificate (valid for 5 years)
-3. Save them to the configured paths
-4. Log the generation with certificate details
+**Auto-generation behavior:**
+- **If intermediate CA exists**: Assumes sophisticated PKI is in place, skips root CA generation
+- **If neither exists**: Generates both root CA (10 years) and intermediate CA (5 years)
+- **Root CA only**: Generates intermediate CA signed by the root
+
+This allows KProxy to work with:
+1. **Simple setup**: Auto-generates both certificates for quick start
+2. **Corporate PKI**: Use existing intermediate CA signed by corporate root
 
 ### Systemd Integration
 
