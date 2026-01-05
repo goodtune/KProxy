@@ -2,7 +2,10 @@ package proxy
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +18,16 @@ import (
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/rs/zerolog"
 )
+
+//go:embed assets/kproxy-logo.png
+var logoData []byte
+var logoETag string
+
+func init() {
+	// Calculate ETag from logo data
+	hash := sha256.Sum256(logoData)
+	logoETag = hex.EncodeToString(hash[:])
+}
 
 // Server is the main proxy server
 type Server struct {
@@ -188,9 +201,34 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// serveLogo serves the embedded KProxy logo with caching headers
+func (s *Server) serveLogo(w http.ResponseWriter, r *http.Request) {
+	// Check ETag
+	if match := r.Header.Get("If-None-Match"); match == logoETag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	// Set cache headers
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400") // 1 day
+	w.Header().Set("ETag", logoETag)
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(logoData); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to write logo")
+	}
+}
+
 // handleHTTP handles HTTP requests
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+
+	// Serve embedded assets
+	if r.URL.Path == "/.kproxy/logo.png" {
+		s.serveLogo(w, r)
+		return
+	}
 
 	// Check if this is a request to server.name - redirect to HTTPS
 	host := r.Host
@@ -270,6 +308,12 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 // handleHTTPS handles HTTPS requests (after TLS termination)
 func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+
+	// Serve embedded assets
+	if r.URL.Path == "/.kproxy/logo.png" {
+		s.serveLogo(w, r)
+		return
+	}
 
 	// Check if this is a request to server.name for client setup
 	host := r.Host
@@ -455,7 +499,7 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 </head>
 <body>
 	<div class="container">
-		<img src="data:image/svg+xml,%%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%%3E%%3Ctext x='50%%25' y='50%%25' font-size='120' text-anchor='middle' dominant-baseline='middle'%%3E🔒%%3C/text%%3E%%3C/svg%%3E" alt="KProxy" class="logo" onerror="this.style.display='none';">
+		<img src="/.kproxy/logo.png" alt="KProxy" class="logo">
 		<div class="icon">🚫</div>
 		<h1>Access Blocked</h1>
 		<p>This website has been blocked by your network filter.</p>
