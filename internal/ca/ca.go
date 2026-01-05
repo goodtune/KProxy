@@ -47,53 +47,82 @@ type Config struct {
 // NewCA creates a new Certificate Authority
 func NewCA(config Config, logger zerolog.Logger) (*CA, error) {
 	ca := &CA{
-		cacheTTL:     config.CertCacheTTL,
+		cacheTTL:     config.CertValidity,
 		certValidity: config.CertValidity,
 		logger:       logger.With().Str("component", "ca").Logger(),
 	}
 
-	// Load root certificate and key (generate if not found)
+	// Check if intermediate certificate exists first
+	// If it does, assume sophisticated PKI is in place and don't generate root CA
+	var hasIntermediate bool
+	if config.IntermCertPath != "" && config.IntermKeyPath != "" {
+		if _, _, err := loadCertificateAndKey(config.IntermCertPath, config.IntermKeyPath); err == nil {
+			hasIntermediate = true
+		}
+	}
+
+	// Load root certificate and key (generate only if intermediate doesn't exist)
 	rootCert, rootKey, err := loadCertificateAndKey(config.RootCertPath, config.RootKeyPath)
 	if err != nil {
-		ca.logger.Warn().Err(err).Msg("Root CA certificate not found, generating new certificate")
-		rootCert, rootKey, err = generateRootCA(config.RootCertPath, config.RootKeyPath, ca.logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate root certificate: %w", err)
+		if hasIntermediate {
+			// Intermediate exists but root doesn't - assume sophisticated PKI
+			// Don't generate root CA, we'll use intermediate directly
+			ca.logger.Info().Msg("Intermediate CA found without root CA - assuming external PKI, skipping root CA generation")
+			ca.rootCert = nil
+			ca.rootKey = nil
+		} else {
+			// Neither root nor intermediate exists - generate both for simple setup
+			ca.logger.Warn().Err(err).Msg("Root CA certificate not found, generating new certificate")
+			rootCert, rootKey, err = generateRootCA(config.RootCertPath, config.RootKeyPath, ca.logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate root certificate: %w", err)
+			}
+			ca.rootCert = rootCert
+			ca.rootKey = rootKey
+			ca.logger.Info().
+				Str("cert_path", config.RootCertPath).
+				Str("key_path", config.RootKeyPath).
+				Msg("Generated new root CA certificate")
 		}
-		ca.logger.Info().
-			Str("cert_path", config.RootCertPath).
-			Str("key_path", config.RootKeyPath).
-			Msg("Generated new root CA certificate")
+	} else {
+		ca.rootCert = rootCert
+		ca.rootKey = rootKey
 	}
-	ca.rootCert = rootCert
-	ca.rootKey = rootKey
 
-	// Load intermediate certificate and key (generate if not provided or not found)
+	// Load intermediate certificate and key
 	if config.IntermCertPath != "" && config.IntermKeyPath != "" {
 		intermCert, intermKey, err := loadCertificateAndKey(config.IntermCertPath, config.IntermKeyPath)
 		if err != nil {
-			ca.logger.Warn().Err(err).Msg("Intermediate certificate not found, generating new certificate")
-			intermCert, intermKey, err = generateIntermediateCA(config.IntermCertPath, config.IntermKeyPath, rootCert, rootKey, ca.logger)
-			if err != nil {
-				ca.logger.Warn().Err(err).Msg("Failed to generate intermediate certificate, using root")
-				ca.intermCert = rootCert
-				ca.intermKey = rootKey
+			// Intermediate not found - generate only if we have a root CA
+			if ca.rootCert != nil {
+				ca.logger.Warn().Err(err).Msg("Intermediate certificate not found, generating new certificate")
+				intermCert, intermKey, err = generateIntermediateCA(config.IntermCertPath, config.IntermKeyPath, ca.rootCert, ca.rootKey, ca.logger)
+				if err != nil {
+					ca.logger.Warn().Err(err).Msg("Failed to generate intermediate certificate, using root")
+					ca.intermCert = ca.rootCert
+					ca.intermKey = ca.rootKey
+				} else {
+					ca.intermCert = intermCert
+					ca.intermKey = intermKey
+					ca.logger.Info().
+						Str("cert_path", config.IntermCertPath).
+						Str("key_path", config.IntermKeyPath).
+						Msg("Generated new intermediate CA certificate")
+				}
 			} else {
-				ca.intermCert = intermCert
-				ca.intermKey = intermKey
-				ca.logger.Info().
-					Str("cert_path", config.IntermCertPath).
-					Str("key_path", config.IntermKeyPath).
-					Msg("Generated new intermediate CA certificate")
+				return nil, fmt.Errorf("intermediate certificate not found and cannot generate without root CA")
 			}
 		} else {
 			ca.intermCert = intermCert
 			ca.intermKey = intermKey
 		}
 	} else {
-		// Use root cert for signing
-		ca.intermCert = rootCert
-		ca.intermKey = rootKey
+		// No intermediate path configured - use root cert for signing
+		if ca.rootCert == nil {
+			return nil, fmt.Errorf("no certificates available - need either root CA or intermediate CA")
+		}
+		ca.intermCert = ca.rootCert
+		ca.intermKey = ca.rootKey
 	}
 
 	// Create certificate cache
