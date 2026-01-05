@@ -85,7 +85,10 @@ func NewEngine(config Config, logger zerolog.Logger) (*Engine, error) {
 
 // validateConfig validates the engine configuration
 func (e *Engine) validateConfig() error {
-	switch strings.ToLower(e.config.Source) {
+	source := strings.ToLower(e.config.Source)
+
+	// Support "filesystem", "remote", or "both"
+	switch source {
 	case "filesystem":
 		if e.config.PolicyDir == "" {
 			return fmt.Errorf("policy_dir is required for filesystem source")
@@ -94,24 +97,60 @@ func (e *Engine) validateConfig() error {
 		if len(e.config.PolicyURLs) == 0 {
 			return fmt.Errorf("policy_urls is required for remote source")
 		}
-		for _, url := range e.config.PolicyURLs {
-			if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-				return fmt.Errorf("invalid policy URL (must be http:// or https://): %s", url)
-			}
+	case "both":
+		if e.config.PolicyDir == "" && len(e.config.PolicyURLs) == 0 {
+			return fmt.Errorf("at least one of policy_dir or policy_urls is required for 'both' source")
 		}
 	default:
-		return fmt.Errorf("invalid policy source: %s (must be 'filesystem' or 'remote')", e.config.Source)
+		return fmt.Errorf("invalid policy source: %s (must be 'filesystem', 'remote', or 'both')", e.config.Source)
 	}
+
+	// Validate URLs if provided
+	for _, url := range e.config.PolicyURLs {
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			return fmt.Errorf("invalid policy URL (must be http:// or https://): %s", url)
+		}
+	}
+
 	return nil
 }
 
 // loadPolicies loads policies based on configured source
 func (e *Engine) loadPolicies() error {
-	switch strings.ToLower(e.config.Source) {
+	source := strings.ToLower(e.config.Source)
+
+	switch source {
 	case "filesystem":
 		return e.loadPoliciesFromFilesystem()
 	case "remote":
 		return e.loadPoliciesFromRemote()
+	case "both":
+		// Load from both sources
+		var errs []error
+
+		// Load filesystem policies if directory is configured
+		if e.config.PolicyDir != "" {
+			if err := e.loadPoliciesFromFilesystem(); err != nil {
+				errs = append(errs, fmt.Errorf("filesystem: %w", err))
+			}
+		}
+
+		// Load remote policies if URLs are configured
+		if len(e.config.PolicyURLs) > 0 {
+			if err := e.loadPoliciesFromRemote(); err != nil {
+				errs = append(errs, fmt.Errorf("remote: %w", err))
+			}
+		}
+
+		// If both failed, return combined error
+		if len(errs) > 0 {
+			if len(errs) == 2 {
+				return fmt.Errorf("failed to load policies from both sources: %v", errs)
+			}
+			return errs[0]
+		}
+
+		return nil
 	default:
 		return fmt.Errorf("unknown policy source: %s", e.config.Source)
 	}

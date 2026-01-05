@@ -115,7 +115,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 			acmeClient := acme.NewClient(acme.Config{
 				Email:       cfg.TLS.LegoEmail,
 				DNSProvider: cfg.TLS.LegoDNSProvider,
-				Credentials: cfg.TLS.LegoCredentials,
 				CertPath:    cfg.TLS.LegoCertPath,
 				KeyPath:     cfg.TLS.LegoKeyPath,
 				CADirURL:    cfg.TLS.LegoCADirURL,

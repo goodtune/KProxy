@@ -402,7 +402,7 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 	// Device identification now happens in OPA; use client IP for display
 	deviceName := clientIP.String()
 
-	// Render block page
+	// Render block page with branding
 	blockHTML := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -428,6 +428,11 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 			text-align: center;
 			box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 		}
+		.logo {
+			max-width: 200px;
+			height: auto;
+			margin-bottom: 20px;
+		}
 		.icon { font-size: 64px; margin-bottom: 20px; }
 		h1 { color: #333; margin-bottom: 16px; }
 		p { color: #666; line-height: 1.6; margin-bottom: 24px; }
@@ -440,10 +445,17 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 			word-break: break-all;
 		}
 		.info { font-size: 14px; color: #999; margin-top: 24px; }
+		.powered-by {
+			font-size: 12px;
+			color: #999;
+			margin-top: 20px;
+			opacity: 0.7;
+		}
 	</style>
 </head>
 <body>
 	<div class="container">
+		<img src="data:image/svg+xml,%%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%%3E%%3Ctext x='50%%25' y='50%%25' font-size='120' text-anchor='middle' dominant-baseline='middle'%%3E🔒%%3C/text%%3E%%3C/svg%%3E" alt="KProxy" class="logo" onerror="this.style.display='none';">
 		<div class="icon">🚫</div>
 		<h1>Access Blocked</h1>
 		<p>This website has been blocked by your network filter.</p>
@@ -454,6 +466,7 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 			Device: %s<br>
 			URL: %s
 		</p>
+		<div class="powered-by">Powered by KProxy</div>
 	</div>
 </body>
 </html>`, decision.Reason, time.Now().Format("2006-01-02 15:04:05"), deviceName, r.Host+r.URL.Path)

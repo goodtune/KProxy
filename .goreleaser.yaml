@@ -83,9 +83,47 @@ nfpms:
         file_info:
           mode: 0644
 
-      # Systemd service file
-      - src: deployments/systemd/kproxy.service
+      # Policy files (marked as config to prevent overwrite on upgrade)
+      - src: policies/config.rego
+        dst: /etc/kproxy/policies/config.rego
+        type: config|noreplace
+        file_info:
+          mode: 0644
+
+      - src: policies/device.rego
+        dst: /etc/kproxy/policies/device.rego
+        file_info:
+          mode: 0644
+
+      - src: policies/dns.rego
+        dst: /etc/kproxy/policies/dns.rego
+        file_info:
+          mode: 0644
+
+      - src: policies/proxy.rego
+        dst: /etc/kproxy/policies/proxy.rego
+        file_info:
+          mode: 0644
+
+      - src: policies/helpers.rego
+        dst: /etc/kproxy/policies/helpers.rego
+        file_info:
+          mode: 0644
+
+      # Systemd units
+      - src: systemd/kproxy.service
         dst: /lib/systemd/system/kproxy.service
+        file_info:
+          mode: 0644
+
+      - src: systemd/kproxy.socket
+        dst: /lib/systemd/system/kproxy.socket
+        file_info:
+          mode: 0644
+
+      # Branding assets
+      - src: assets/kproxy-logo.png
+        dst: /usr/share/kproxy/assets/kproxy-logo.png
         file_info:
           mode: 0644
 

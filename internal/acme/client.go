@@ -22,13 +22,14 @@ import (
 
 // Config holds ACME client configuration
 type Config struct {
-	Email        string            // Email for Let's Encrypt account
-	DNSProvider  string            // DNS provider name (e.g., "cloudflare", "route53")
-	Credentials  map[string]string // DNS provider credentials
-	CertPath     string            // Path to store certificate
-	KeyPath      string            // Path to store private key
-	CADirURL     string            // ACME directory URL
-	Domain       string            // Domain to obtain certificate for
+	Email       string // Email for Let's Encrypt account
+	DNSProvider string // DNS provider name (e.g., "cloudflare", "route53")
+	// Credentials removed - DNS provider credentials are read from environment variables
+	// See https://go-acme.github.io/lego/dns/ for provider-specific environment variables
+	CertPath string // Path to store certificate
+	KeyPath  string // Path to store private key
+	CADirURL string // ACME directory URL
+	Domain   string // Domain to obtain certificate for
 }
 
 // User implements the ACME user interface
@@ -170,47 +171,25 @@ func (c *Client) ObtainCertificate() error {
 	return nil
 }
 
-// getDNSProvider creates a DNS provider based on configuration
+// getDNSProvider creates a DNS provider from environment variables
+// Credentials must be provided via environment variables (see systemd EnvironmentFile)
+// See https://go-acme.github.io/lego/dns/ for provider-specific environment variables
 func (c *Client) getDNSProvider() (challenge.Provider, error) {
-	c.logger.Debug().
-		Str("provider", c.config.DNSProvider).
-		Msg("Setting DNS provider credentials as environment variables")
-
-	// Set environment variables from credentials
-	credKeys := []string{}
-	for key, value := range c.config.Credentials {
-		// Mask the value in logs for security
-		maskedValue := value
-		if len(value) > 8 {
-			maskedValue = value[:4] + "..." + value[len(value)-4:]
-		} else if len(value) > 0 {
-			maskedValue = "***"
-		}
-
-		c.logger.Debug().
-			Str("key", key).
-			Str("value", maskedValue).
-			Msg("Setting credential environment variable")
-
-		os.Setenv(key, value)
-		credKeys = append(credKeys, key)
-	}
-
 	c.logger.Info().
 		Str("provider", c.config.DNSProvider).
-		Strs("credential_keys", credKeys).
-		Msg("Creating DNS provider with credentials")
+		Strs("expected_env_vars", getExpectedEnvVars(c.config.DNSProvider)).
+		Msg("Creating DNS provider from environment variables")
 
 	// Create provider using environment variables
-	// The lego library will automatically detect the provider from environment
+	// The lego library will automatically read provider-specific environment variables
 	provider, err := dns.NewDNSChallengeProviderByName(c.config.DNSProvider)
 	if err != nil {
 		c.logger.Error().
 			Err(err).
 			Str("provider", c.config.DNSProvider).
 			Strs("expected_env_vars", getExpectedEnvVars(c.config.DNSProvider)).
-			Msg("Failed to create DNS provider")
-		return nil, fmt.Errorf("unsupported DNS provider %q: %w", c.config.DNSProvider, err)
+			Msg("Failed to create DNS provider - ensure environment variables are set")
+		return nil, fmt.Errorf("failed to create DNS provider %q (check environment variables): %w", c.config.DNSProvider, err)
 	}
 
 	c.logger.Info().

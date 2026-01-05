@@ -61,6 +61,13 @@ LimitNPROC=512
 
 # Environment
 Environment="GOGC=100"
+# Optional environment file for Let's Encrypt/ACME credentials
+# Create /etc/sysconfig/kproxy with provider-specific variables:
+# Example for Cloudflare:
+#   CF_API_EMAIL=user@example.com
+#   CF_API_KEY=your-api-key
+# See https://go-acme.github.io/lego/dns/ for provider-specific variables
+EnvironmentFile=-/etc/sysconfig/kproxy
 
 # Logging
 StandardOutput=journal
