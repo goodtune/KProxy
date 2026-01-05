@@ -278,13 +278,9 @@ func generateRootCA(certPath, keyPath string, logger zerolog.Logger) (*x509.Cert
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization:  []string{"KProxy"},
-			CommonName:    "KProxy Root CA",
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{""},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
+			Organization: []string{"KProxy"},
+			CommonName:   "KProxy Root CA",
+			Country:      []string{"US"},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -307,9 +303,12 @@ func generateRootCA(certPath, keyPath string, logger zerolog.Logger) (*x509.Cert
 		return nil, nil, fmt.Errorf("failed to parse certificate: %w", err)
 	}
 
-	// Ensure directory exists
+	// Ensure directories exist for both cert and key
 	if err := os.MkdirAll(filepath.Dir(certPath), 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to create directory: %w", err)
+		return nil, nil, fmt.Errorf("failed to create certificate directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create key directory: %w", err)
 	}
 
 	// Save certificate
@@ -326,8 +325,8 @@ func generateRootCA(certPath, keyPath string, logger zerolog.Logger) (*x509.Cert
 		return nil, nil, fmt.Errorf("failed to write certificate: %w", err)
 	}
 
-	// Save private key
-	keyFile, err := os.Create(keyPath)
+	// Save private key with restrictive permissions (0600)
+	keyFile, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create key file: %w", err)
 	}
@@ -375,13 +374,9 @@ func generateIntermediateCA(certPath, keyPath string, rootCert *x509.Certificate
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization:  []string{"KProxy"},
-			CommonName:    "KProxy Intermediate CA",
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{""},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
+			Organization: []string{"KProxy"},
+			CommonName:   "KProxy Intermediate CA",
+			Country:      []string{"US"},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -404,9 +399,12 @@ func generateIntermediateCA(certPath, keyPath string, rootCert *x509.Certificate
 		return nil, nil, fmt.Errorf("failed to parse certificate: %w", err)
 	}
 
-	// Ensure directory exists
+	// Ensure directories exist for both cert and key
 	if err := os.MkdirAll(filepath.Dir(certPath), 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to create directory: %w", err)
+		return nil, nil, fmt.Errorf("failed to create certificate directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create key directory: %w", err)
 	}
 
 	// Save certificate
@@ -423,8 +421,8 @@ func generateIntermediateCA(certPath, keyPath string, rootCert *x509.Certificate
 		return nil, nil, fmt.Errorf("failed to write certificate: %w", err)
 	}
 
-	// Save private key
-	keyFile, err := os.Create(keyPath)
+	// Save private key with restrictive permissions (0600)
+	keyFile, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create key file: %w", err)
 	}

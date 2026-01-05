@@ -98,9 +98,11 @@ func (e *Engine) validateConfig() error {
 			return fmt.Errorf("policy_urls is required for remote source")
 		}
 	case "both":
-		if e.config.PolicyDir == "" && len(e.config.PolicyURLs) == 0 {
-			return fmt.Errorf("at least one of policy_dir or policy_urls is required for 'both' source")
+		// Both mode requires filesystem (reliable local storage)
+		if e.config.PolicyDir == "" {
+			return fmt.Errorf("policy_dir is required for 'both' source (filesystem is required)")
 		}
+		// Remote URLs are optional in both mode
 	default:
 		return fmt.Errorf("invalid policy source: %s (must be 'filesystem', 'remote', or 'both')", e.config.Source)
 	}
