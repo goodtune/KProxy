@@ -128,7 +128,6 @@ func setDefaultsForDump(v *viper.Viper) {
 	v.SetDefault("tls.use_letsencrypt", false)
 	v.SetDefault("tls.lego_email", "")
 	v.SetDefault("tls.lego_dns_provider", "")
-	// lego_credentials removed - credentials provided via environment variables
 	v.SetDefault("tls.lego_cert_path", "/etc/kproxy/certs/letsencrypt.crt")
 	v.SetDefault("tls.lego_key_path", "/etc/kproxy/certs/letsencrypt.key")
 	v.SetDefault("tls.lego_ca_dir_url", "https://acme-v02.api.letsencrypt.org/directory")
@@ -312,7 +311,6 @@ func dumpConfig(cfg, defaultCfg *config.Config, unknownKeys []string) {
 	dumpField("  use_letsencrypt", cfg.TLS.UseLetsEncrypt, defaultCfg.TLS.UseLetsEncrypt, yellow, green)
 	dumpField("  lego_email", cfg.TLS.LegoEmail, defaultCfg.TLS.LegoEmail, yellow, green)
 	dumpField("  lego_dns_provider", cfg.TLS.LegoDNSProvider, defaultCfg.TLS.LegoDNSProvider, yellow, green)
-	// lego_credentials removed - credentials provided via environment variables
 	dumpField("  lego_cert_path", cfg.TLS.LegoCertPath, defaultCfg.TLS.LegoCertPath, yellow, green)
 	dumpField("  lego_key_path", cfg.TLS.LegoKeyPath, defaultCfg.TLS.LegoKeyPath, yellow, green)
 	dumpField("  lego_ca_dir_url", cfg.TLS.LegoCADirURL, defaultCfg.TLS.LegoCADirURL, yellow, green)
