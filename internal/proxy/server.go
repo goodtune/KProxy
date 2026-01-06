@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -213,6 +214,7 @@ func (s *Server) serveLogo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=86400") // 1 day
 	w.Header().Set("ETag", logoETag)
+	w.Header().Set("Content-Length", strconv.Itoa(len(logoData)))
 	w.WriteHeader(http.StatusOK)
 
 	if _, err := w.Write(logoData); err != nil {
