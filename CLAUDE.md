@@ -50,9 +50,21 @@ sudo ./bin/kproxy -config /etc/kproxy/config.yaml  # Run with custom config
 ```
 
 ### CA Certificate Generation
+
+CA certificates are **automatically generated** on first startup if not found. You can also generate them manually:
+
 ```bash
 sudo make generate-ca    # Generate CA certificates using scripts/generate-ca.sh
 ```
+
+**Auto-generation behavior:**
+- **If intermediate CA exists**: Assumes sophisticated PKI is in place, skips root CA generation
+- **If neither exists**: Generates both root CA (10 years) and intermediate CA (5 years)
+- **Root CA only**: Generates intermediate CA signed by the root
+
+This allows KProxy to work with:
+1. **Simple setup**: Auto-generates both certificates for quick start
+2. **Corporate PKI**: Use existing intermediate CA signed by corporate root
 
 ### Systemd Integration
 
@@ -181,6 +193,22 @@ policy:
     - https://policy-server.example.com/policies/proxy.rego
     - https://policy-server.example.com/policies/helpers.rego
 ```
+
+### Mixed Policy Sources
+
+KProxy can load policies from both filesystem and remote URLs simultaneously:
+
+```yaml
+policy:
+  opa_policy_source: both
+  opa_policy_dir: /etc/kproxy/policies
+  opa_policy_urls:
+    - https://policy-server.example.com/policies/shared-rules.rego
+```
+
+This allows you to:
+- Keep device-specific configs local (filesystem)
+- Share common rules across multiple KProxy instances (remote)
 
 ## Architecture Overview
 
@@ -371,8 +399,21 @@ sudo kill -HUP $(pidof kproxy)        # Direct signal
 
 **Requirements**:
 - `server.name` must be a publicly resolvable domain you control
-- DNS provider API credentials
+- DNS provider API credentials (via environment variables in `/etc/sysconfig/kproxy`)
 - Server must reach Let's Encrypt API (port 443 outbound)
+
+**Credentials Configuration**:
+DNS provider credentials are provided via environment variables, not config file. Create `/etc/sysconfig/kproxy` with provider-specific variables:
+
+```bash
+# /etc/sysconfig/kproxy - Cloudflare example
+CLOUDFLARE_EMAIL=admin@example.com
+CLOUDFLARE_API_KEY=your-api-key
+# OR
+CLOUDFLARE_DNS_API_TOKEN=your-api-token
+```
+
+See https://go-acme.github.io/lego/dns/ for provider-specific variables.
 
 ### Metrics & Observability
 

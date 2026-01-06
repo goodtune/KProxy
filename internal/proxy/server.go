@@ -2,11 +2,15 @@ package proxy
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +19,16 @@ import (
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/rs/zerolog"
 )
+
+//go:embed assets/kproxy-logo.png
+var logoData []byte
+var logoETag string
+
+func init() {
+	// Calculate ETag from logo data
+	hash := sha256.Sum256(logoData)
+	logoETag = hex.EncodeToString(hash[:])
+}
 
 // Server is the main proxy server
 type Server struct {
@@ -188,9 +202,35 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// serveLogo serves the embedded KProxy logo with caching headers
+func (s *Server) serveLogo(w http.ResponseWriter, r *http.Request) {
+	// Check ETag
+	if match := r.Header.Get("If-None-Match"); match == logoETag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	// Set cache headers
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400") // 1 day
+	w.Header().Set("ETag", logoETag)
+	w.Header().Set("Content-Length", strconv.Itoa(len(logoData)))
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(logoData); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to write logo")
+	}
+}
+
 // handleHTTP handles HTTP requests
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+
+	// Serve embedded assets
+	if r.URL.Path == "/.kproxy/logo.png" {
+		s.serveLogo(w, r)
+		return
+	}
 
 	// Check if this is a request to server.name - redirect to HTTPS
 	host := r.Host
@@ -270,6 +310,12 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 // handleHTTPS handles HTTPS requests (after TLS termination)
 func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+
+	// Serve embedded assets
+	if r.URL.Path == "/.kproxy/logo.png" {
+		s.serveLogo(w, r)
+		return
+	}
 
 	// Check if this is a request to server.name for client setup
 	host := r.Host
@@ -402,7 +448,7 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 	// Device identification now happens in OPA; use client IP for display
 	deviceName := clientIP.String()
 
-	// Render block page
+	// Render block page with branding
 	blockHTML := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -428,6 +474,11 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 			text-align: center;
 			box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 		}
+		.logo {
+			max-width: 200px;
+			height: auto;
+			margin-bottom: 20px;
+		}
 		.icon { font-size: 64px; margin-bottom: 20px; }
 		h1 { color: #333; margin-bottom: 16px; }
 		p { color: #666; line-height: 1.6; margin-bottom: 24px; }
@@ -440,10 +491,17 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 			word-break: break-all;
 		}
 		.info { font-size: 14px; color: #999; margin-top: 24px; }
+		.powered-by {
+			font-size: 12px;
+			color: #999;
+			margin-top: 20px;
+			opacity: 0.7;
+		}
 	</style>
 </head>
 <body>
 	<div class="container">
+		<img src="/.kproxy/logo.png" alt="KProxy" class="logo">
 		<div class="icon">🚫</div>
 		<h1>Access Blocked</h1>
 		<p>This website has been blocked by your network filter.</p>
@@ -454,6 +512,7 @@ func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request, decision *p
 			Device: %s<br>
 			URL: %s
 		</p>
+		<div class="powered-by">Powered by KProxy</div>
 	</div>
 </body>
 </html>`, decision.Reason, time.Now().Format("2006-01-02 15:04:05"), deviceName, r.Host+r.URL.Path)

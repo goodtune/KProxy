@@ -85,7 +85,10 @@ func NewEngine(config Config, logger zerolog.Logger) (*Engine, error) {
 
 // validateConfig validates the engine configuration
 func (e *Engine) validateConfig() error {
-	switch strings.ToLower(e.config.Source) {
+	source := strings.ToLower(e.config.Source)
+
+	// Support "filesystem", "remote", or "both"
+	switch source {
 	case "filesystem":
 		if e.config.PolicyDir == "" {
 			return fmt.Errorf("policy_dir is required for filesystem source")
@@ -94,24 +97,60 @@ func (e *Engine) validateConfig() error {
 		if len(e.config.PolicyURLs) == 0 {
 			return fmt.Errorf("policy_urls is required for remote source")
 		}
-		for _, url := range e.config.PolicyURLs {
-			if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-				return fmt.Errorf("invalid policy URL (must be http:// or https://): %s", url)
-			}
+	case "both":
+		// Both mode requires filesystem (reliable local storage)
+		if e.config.PolicyDir == "" {
+			return fmt.Errorf("policy_dir is required for 'both' source (filesystem is required)")
 		}
+		// Remote URLs are optional in both mode
 	default:
-		return fmt.Errorf("invalid policy source: %s (must be 'filesystem' or 'remote')", e.config.Source)
+		return fmt.Errorf("invalid policy source: %s (must be 'filesystem', 'remote', or 'both')", e.config.Source)
 	}
+
+	// Validate URLs if provided
+	for _, url := range e.config.PolicyURLs {
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			return fmt.Errorf("invalid policy URL (must be http:// or https://): %s", url)
+		}
+	}
+
 	return nil
 }
 
 // loadPolicies loads policies based on configured source
 func (e *Engine) loadPolicies() error {
-	switch strings.ToLower(e.config.Source) {
+	source := strings.ToLower(e.config.Source)
+
+	switch source {
 	case "filesystem":
 		return e.loadPoliciesFromFilesystem()
 	case "remote":
 		return e.loadPoliciesFromRemote()
+	case "both":
+		// Load from both sources - filesystem is required, remote is optional
+		// Filesystem is local storage and should be reliable
+
+		// Load filesystem policies (required)
+		if e.config.PolicyDir != "" {
+			if err := e.loadPoliciesFromFilesystem(); err != nil {
+				return fmt.Errorf("filesystem policies required in 'both' mode: %w", err)
+			}
+		} else {
+			return fmt.Errorf("policy_dir required when using 'both' mode")
+		}
+
+		// Load remote policies (optional - log warning if fails)
+		if len(e.config.PolicyURLs) > 0 {
+			if err := e.loadPoliciesFromRemote(); err != nil {
+				e.logger.Warn().Err(err).Msg("Failed to load remote policies, continuing with filesystem only")
+			} else {
+				e.logger.Info().Msg("Successfully loaded policies from both filesystem and remote")
+			}
+		} else {
+			e.logger.Info().Msg("Loaded policies from filesystem (no remote URLs configured)")
+		}
+
+		return nil
 	default:
 		return fmt.Errorf("unknown policy source: %s", e.config.Source)
 	}
