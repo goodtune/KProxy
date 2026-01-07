@@ -61,6 +61,7 @@ nfpms:
       Combines DNS-level routing with proxy-level policy enforcement, dynamic TLS certificate
       generation, and usage tracking.
     license: MIT
+    section: net
     formats:
       - deb
       - rpm
@@ -169,8 +170,6 @@ nfpms:
 
     # DEB-specific
     deb:
-      fields:
-        Section: net
       compression: xz
 
 # Checksum configuration
