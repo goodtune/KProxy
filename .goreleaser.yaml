@@ -171,7 +171,6 @@ nfpms:
     deb:
       fields:
         Section: net
-        Priority: optional
       compression: xz
 
 # Checksum configuration
