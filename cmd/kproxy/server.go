@@ -363,9 +363,15 @@ func runServer(cmd *cobra.Command, args []string) error {
 		} else {
 			// Start a server for each configured backend
 			for backendName, backendCfg := range cfg.Postgres.Backends {
+				// Use per-backend bind address if specified, otherwise fall back to global
+				bindAddr := backendCfg.BindAddress
+				if bindAddr == "" {
+					bindAddr = cfg.Server.BindAddress
+				}
+
 				postgresConfig := postgres.Config{
 					BackendName: backendName,
-					ListenAddr:  fmt.Sprintf("%s:%d", cfg.Server.BindAddress, backendCfg.ListenPort),
+					ListenAddr:  fmt.Sprintf("%s:%d", bindAddr, backendCfg.ListenPort),
 					BackendAddr: backendCfg.BackendAddr,
 				}
 
@@ -422,7 +428,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
 	if cfg.Postgres.Enabled && len(postgresServers) > 0 {
 		for backendName, backendCfg := range cfg.Postgres.Backends {
-			logger.Info().Msgf("PostgreSQL Proxy [%s]: %s:%d -> %s", backendName, cfg.Server.BindAddress, backendCfg.ListenPort, backendCfg.BackendAddr)
+			// Use per-backend bind address if specified, otherwise fall back to global
+			bindAddr := backendCfg.BindAddress
+			if bindAddr == "" {
+				bindAddr = cfg.Server.BindAddress
+			}
+			logger.Info().Msgf("PostgreSQL Proxy [%s]: %s:%d -> %s", backendName, bindAddr, backendCfg.ListenPort, backendCfg.BackendAddr)
 		}
 	}
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)

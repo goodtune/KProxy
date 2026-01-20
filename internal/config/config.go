@@ -72,6 +72,7 @@ type PostgresConfig struct {
 
 // PostgresBackend defines a single PostgreSQL backend
 type PostgresBackend struct {
+	BindAddress string `mapstructure:"bind_address"` // Address to bind on (optional, defaults to server.bind_address)
 	ListenPort  int    `mapstructure:"listen_port"`  // Port to listen on for this backend
 	BackendAddr string `mapstructure:"backend_addr"` // Backend PostgreSQL server (e.g., "postgres-dev:5432")
 	Description string `mapstructure:"description"`  // Human-readable description

@@ -91,11 +91,13 @@ postgres:
   # This allows port-based routing to different database clusters
   backends:
     dev:
+      # bind_address: "0.0.0.0"  # Optional: specific IP/interface to bind on (defaults to server.bind_address)
       listen_port: 5432
       backend_addr: "postgres-dev.internal:5432"
       description: "Development cluster - unrestricted access for developers"
 
     prod:
+      # bind_address: "10.0.1.10"  # Example: bind to specific internal interface
       listen_port: 5433
       backend_addr: "postgres-prod.internal:5432"
       description: "Production cluster - restricted to application users"
