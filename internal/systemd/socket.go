@@ -16,6 +16,7 @@ type Listeners struct {
 	DNSUdp    net.PacketConn
 	DNSTcp    net.Listener
 	DHCP      net.PacketConn
+	Postgres  net.Listener
 	Metrics   net.Listener
 	Activated bool
 }
@@ -46,7 +47,7 @@ func GetListeners() (*Listeners, error) {
 	}
 
 	// Map named file descriptors to our listener structure
-	// Expected names: http, https, dns-udp, dns-tcp, dhcp, metrics
+	// Expected names: http, https, dns-udp, dns-tcp, dhcp, postgres, metrics
 
 	if lns, ok := listenersMap["http"]; ok && len(lns) > 0 {
 		listeners.HTTP = lns[0]
@@ -58,6 +59,10 @@ func GetListeners() (*Listeners, error) {
 
 	if lns, ok := listenersMap["dns-tcp"]; ok && len(lns) > 0 {
 		listeners.DNSTcp = lns[0]
+	}
+
+	if lns, ok := listenersMap["postgres"]; ok && len(lns) > 0 {
+		listeners.Postgres = lns[0]
 	}
 
 	if lns, ok := listenersMap["metrics"]; ok && len(lns) > 0 {

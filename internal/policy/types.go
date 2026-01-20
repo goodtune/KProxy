@@ -142,3 +142,11 @@ type DNSRequest struct {
 	Domain   string
 	QType    string
 }
+
+// PostgresRequest represents a PostgreSQL connection to be evaluated
+type PostgresRequest struct {
+	ClientIP  net.IP
+	ClientMAC net.HardwareAddr
+	Database  string
+	Username  string
+}

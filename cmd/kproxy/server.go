@@ -17,6 +17,7 @@ import (
 	"github.com/goodtune/kproxy/internal/dns"
 	"github.com/goodtune/kproxy/internal/metrics"
 	"github.com/goodtune/kproxy/internal/policy"
+	"github.com/goodtune/kproxy/internal/postgres"
 	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/proxy"
 	"github.com/goodtune/kproxy/internal/storage"
@@ -354,6 +355,39 @@ func runServer(cmd *cobra.Command, args []string) error {
 		Str("https", proxyConfig.HTTPSAddr).
 		Msg("Proxy Server started")
 
+	// Initialize PostgreSQL Proxy Server (if enabled)
+	var postgresServer *postgres.Server
+	if cfg.Postgres.Enabled {
+		if cfg.Postgres.BackendAddr == "" {
+			logger.Warn().Msg("PostgreSQL proxy enabled but no backend_addr configured, skipping")
+		} else {
+			postgresConfig := postgres.Config{
+				ListenAddr:  fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.PostgresPort),
+				BackendAddr: cfg.Postgres.BackendAddr,
+			}
+
+			postgresServer = postgres.NewServer(
+				postgresConfig,
+				policyEngine,
+				logger,
+			)
+
+			// Use systemd socket-activated listener if available
+			if sdListeners.Activated && sdListeners.Postgres != nil {
+				postgresServer.SetListener(sdListeners.Postgres)
+			}
+
+			if err := postgresServer.Start(postgresConfig.ListenAddr); err != nil {
+				return fmt.Errorf("failed to start PostgreSQL Proxy Server: %w", err)
+			}
+
+			logger.Info().
+				Str("listen", postgresConfig.ListenAddr).
+				Str("backend", cfg.Postgres.BackendAddr).
+				Msg("PostgreSQL Proxy Server started")
+		}
+	}
+
 	// Initialize Metrics Server
 	metricsAddr := fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.MetricsPort)
 	metricsServer := metrics.NewServer(metricsAddr, logger)
@@ -376,6 +410,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	logger.Info().Msgf("DNS Server: %s:%d", cfg.Server.BindAddress, cfg.Server.DNSPort)
 	logger.Info().Msgf("HTTP Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort)
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
+	if cfg.Postgres.Enabled && postgresServer != nil {
+		logger.Info().Msgf("PostgreSQL Proxy: %s:%d -> %s", cfg.Server.BindAddress, cfg.Server.PostgresPort, cfg.Postgres.BackendAddr)
+	}
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)
 
 	// Notify systemd that we're ready to serve requests
@@ -433,6 +470,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	if err := proxyServer.Stop(); err != nil {
 		logger.Error().Err(err).Msg("Error stopping Proxy Server")
+	}
+
+	if postgresServer != nil {
+		if err := postgresServer.Stop(); err != nil {
+			logger.Error().Err(err).Msg("Error stopping PostgreSQL Proxy Server")
+		}
 	}
 
 	if err := metricsServer.Stop(); err != nil {

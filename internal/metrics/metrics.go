@@ -117,6 +117,55 @@ var (
 			Help: "Number of active DHCP leases",
 		},
 	)
+
+	// PostgreSQL metrics
+	PostgresConnectionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_postgres_connections_total",
+			Help: "Total PostgreSQL connections processed",
+		},
+		[]string{"device", "database", "username", "action"},
+	)
+
+	PostgresConnectionDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "kproxy_postgres_connection_duration_seconds",
+			Help:    "PostgreSQL connection duration in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"device", "action"},
+	)
+
+	PostgresBlockedConnectionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_postgres_blocked_connections_total",
+			Help: "Total blocked PostgreSQL connections",
+		},
+		[]string{"device", "reason"},
+	)
+
+	PostgresActiveConnections = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "kproxy_postgres_active_connections",
+			Help: "Number of active PostgreSQL connections",
+		},
+	)
+
+	PostgresBytesSent = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_postgres_bytes_sent_total",
+			Help: "Total bytes sent to PostgreSQL backend",
+		},
+		[]string{"database"},
+	)
+
+	PostgresBytesReceived = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_postgres_bytes_received_total",
+			Help: "Total bytes received from PostgreSQL backend",
+		},
+		[]string{"database"},
+	)
 )
 
 func init() {
@@ -135,6 +184,12 @@ func init() {
 		ActiveConnections,
 		DHCPRequestsTotal,
 		DHCPLeasesActive,
+		PostgresConnectionsTotal,
+		PostgresConnectionDuration,
+		PostgresBlockedConnectionsTotal,
+		PostgresActiveConnections,
+		PostgresBytesSent,
+		PostgresBytesReceived,
 	)
 }
 

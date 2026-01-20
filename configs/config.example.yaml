@@ -9,6 +9,7 @@ server:
   # Proxy ports
   http_port: 80
   https_port: 443
+  postgres_port: 5432
 
   # Server name for client setup (certificate download, etc.)
   # This domain is always intercepted and allowed for all devices
@@ -79,6 +80,37 @@ dhcp:
   #   - netboot.xyz: "http://boot.netboot.xyz/ipxe/netboot.xyz.efi"
   #   - Custom iPXE: "http://192.168.1.1:8080/boot/ipxe.efi"
   #   - Local image: "http://192.168.1.1:8080/boot/kiosk.iso"
+
+postgres:
+  # Enable/disable PostgreSQL proxy
+  # When enabled, KProxy intercepts PostgreSQL connections on port 5432
+  # and forwards them to a backend PostgreSQL server after policy evaluation
+  enabled: false
+
+  # Backend PostgreSQL server address
+  # This is the actual PostgreSQL server that KProxy will forward connections to
+  # Format: "host:port"
+  # Example: "localhost:5433" or "postgres.internal:5432"
+  backend_addr: "localhost:5433"
+
+  # NOTE: Configure PostgreSQL access rules in policies/config.rego
+  # Example policy configuration:
+  #
+  # profiles := {
+  #   "developer": {
+  #     "name": "Developer Profile",
+  #     "postgres_rules": [
+  #       {
+  #         "id": "allow-dev-databases",
+  #         "databases": ["myapp_dev", "myapp_test"],
+  #         "usernames": ["developer"],
+  #         "action": "allow",
+  #         "category": "database"
+  #       }
+  #     ],
+  #     "default_action": "block"
+  #   }
+  # }
 
 tls:
   # CA certificate and key paths

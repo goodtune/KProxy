@@ -32,9 +32,10 @@ type Engine struct {
 	logger zerolog.Logger
 
 	// Compiled queries (protected by mu)
-	mu         sync.RWMutex
-	dnsQuery   rego.PreparedEvalQuery
-	proxyQuery rego.PreparedEvalQuery
+	mu            sync.RWMutex
+	dnsQuery      rego.PreparedEvalQuery
+	proxyQuery    rego.PreparedEvalQuery
+	postgresQuery rego.PreparedEvalQuery
 
 	// Policy modules (protected by mu)
 	modules map[string]*ast.Module
@@ -72,6 +73,11 @@ func NewEngine(config Config, logger zerolog.Logger) (*Engine, error) {
 	// Prepare Proxy query
 	if err := e.prepareProxyQuery(); err != nil {
 		return nil, fmt.Errorf("failed to prepare proxy query: %w", err)
+	}
+
+	// Prepare PostgreSQL query
+	if err := e.preparePostgresQuery(); err != nil {
+		return nil, fmt.Errorf("failed to prepare postgres query: %w", err)
 	}
 
 	e.logger.Info().
@@ -345,6 +351,29 @@ func (e *Engine) prepareProxyQuery() error {
 	return nil
 }
 
+// preparePostgresQuery prepares the postgres decision query
+func (e *Engine) preparePostgresQuery() error {
+	ctx := context.Background()
+
+	// Build rego options: query + modules
+	opts := []func(*rego.Rego){rego.Query("data.kproxy.postgres.decision")}
+	opts = append(opts, e.withModules()...)
+
+	// Build rego instance with all options
+	r := rego.New(opts...)
+
+	// Prepare the query
+	query, err := r.PrepareForEval(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to prepare postgres query: %w", err)
+	}
+
+	e.postgresQuery = query
+	e.logger.Debug().Msg("PostgreSQL query prepared")
+
+	return nil
+}
+
 // withModules returns rego options for all loaded modules
 func (e *Engine) withModules() []func(*rego.Rego) {
 	opts := make([]func(*rego.Rego), 0, len(e.modules))
@@ -461,6 +490,59 @@ func (e *Engine) EvaluateProxy(ctx context.Context, input map[string]interface{}
 	return &decision, nil
 }
 
+// PostgresDecision represents a postgres policy decision
+type PostgresDecision struct {
+	Action               string `json:"action"`
+	Reason               string `json:"reason"`
+	BlockPage            string `json:"block_page"`
+	MatchedRuleID        string `json:"matched_rule_id"`
+	Category             string `json:"category"`
+	InjectTimer          bool   `json:"inject_timer"`
+	TimeRemainingMinutes int    `json:"time_remaining_minutes"`
+	UsageLimitID         string `json:"usage_limit_id"`
+}
+
+// EvaluatePostgres evaluates a PostgreSQL connection request
+func (e *Engine) EvaluatePostgres(ctx context.Context, input map[string]interface{}) (*PostgresDecision, error) {
+	startTime := time.Now()
+
+	// Acquire read lock to safely access prepared query
+	e.mu.RLock()
+	postgresQuery := e.postgresQuery
+	e.mu.RUnlock()
+
+	// Evaluate the query
+	results, err := postgresQuery.Eval(ctx, rego.EvalInput(input))
+	if err != nil {
+		return nil, fmt.Errorf("postgres query evaluation failed: %w", err)
+	}
+
+	duration := time.Since(startTime)
+	e.logger.Debug().Dur("duration_ms", duration).Msg("PostgreSQL query evaluated")
+
+	// Extract result
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no results from postgres query")
+	}
+
+	if len(results[0].Expressions) == 0 {
+		return nil, fmt.Errorf("no expressions in postgres query result")
+	}
+
+	// Convert result to PostgresDecision
+	resultBytes, err := json.Marshal(results[0].Expressions[0].Value)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal postgres decision: %w", err)
+	}
+
+	var decision PostgresDecision
+	if err := json.Unmarshal(resultBytes, &decision); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal postgres decision: %w", err)
+	}
+
+	return &decision, nil
+}
+
 // Reload reloads all policies
 func (e *Engine) Reload() error {
 	e.logger.Info().Msg("Reloading OPA policies")
@@ -484,6 +566,10 @@ func (e *Engine) Reload() error {
 
 	if err := e.prepareProxyQuery(); err != nil {
 		return fmt.Errorf("failed to re-prepare proxy query: %w", err)
+	}
+
+	if err := e.preparePostgresQuery(); err != nil {
+		return fmt.Errorf("failed to re-prepare postgres query: %w", err)
 	}
 
 	e.logger.Info().Msg("OPA policies reloaded successfully")

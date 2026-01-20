@@ -19,6 +19,10 @@ FileDescriptorName=dns-udp
 ListenStream=53
 FileDescriptorName=dns-tcp
 
+# PostgreSQL proxy socket (optional - uncomment if using PostgreSQL proxy)
+# ListenStream=5432
+# FileDescriptorName=postgres
+
 # Metrics HTTP socket
 ListenStream=9090
 FileDescriptorName=metrics
