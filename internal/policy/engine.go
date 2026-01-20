@@ -220,6 +220,62 @@ func (e *Engine) makeDeviceKey(clientIP net.IP, clientMAC net.HardwareAddr) stri
 	return clientIP.String()
 }
 
+// EvaluatePostgres evaluates a PostgreSQL connection request against the policy using OPA
+func (e *Engine) EvaluatePostgres(req *PostgresRequest) *PolicyDecision {
+	// Build facts
+	facts := e.buildPostgresFacts(req)
+
+	// Evaluate with OPA
+	ctx := context.Background()
+	opaDecision, err := e.opaEngine.EvaluatePostgres(ctx, facts)
+	if err != nil {
+		e.logger.Error().Err(err).Msg("OPA postgres evaluation failed, falling back to block")
+		return &PolicyDecision{
+			Action: ActionBlock,
+			Reason: fmt.Sprintf("OPA evaluation error: %v", err),
+		}
+	}
+
+	// Convert OPA decision to PolicyDecision
+	decision := &PolicyDecision{
+		Action:        Action(opaDecision.Action),
+		Reason:        opaDecision.Reason,
+		BlockPage:     opaDecision.BlockPage,
+		MatchedRuleID: opaDecision.MatchedRuleID,
+		Category:      opaDecision.Category,
+		InjectTimer:   opaDecision.InjectTimer,
+		TimeRemaining: time.Duration(opaDecision.TimeRemainingMinutes) * time.Minute,
+		UsageLimitID:  opaDecision.UsageLimitID,
+	}
+
+	return decision
+}
+
+// buildPostgresFacts gathers facts for PostgreSQL connection evaluation
+func (e *Engine) buildPostgresFacts(req *PostgresRequest) map[string]interface{} {
+	clientMACStr := ""
+	if req.ClientMAC != nil {
+		clientMACStr = req.ClientMAC.String()
+	}
+
+	// Get current time info from clock
+	now := e.clock.Now()
+	currentTime := map[string]interface{}{
+		"day_of_week": int(now.Weekday()),
+		"hour":        now.Hour(),
+		"minute":      now.Minute(),
+	}
+
+	return map[string]interface{}{
+		"client_ip":  req.ClientIP.String(),
+		"client_mac": clientMACStr,
+		"backend":    req.Backend,
+		"database":   req.Database,
+		"username":   req.Username,
+		"time":       currentTime,
+	}
+}
+
 // Reload reloads the OPA policies
 // No longer needs to load database config - just reload OPA policies
 func (e *Engine) Reload() error {

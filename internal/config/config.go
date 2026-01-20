@@ -12,6 +12,7 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	DNS      DNSConfig      `mapstructure:"dns"`
 	DHCP     DHCPConfig     `mapstructure:"dhcp"`
+	Postgres PostgresConfig `mapstructure:"postgres"`
 	TLS      TLSConfig      `mapstructure:"tls"`
 	Storage  StorageConfig  `mapstructure:"storage"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
@@ -60,6 +61,21 @@ type DHCPConfig struct {
 	BootServerName string   `mapstructure:"boot_server_name"` // Boot server hostname
 	TFTPIP         string   `mapstructure:"tftp_ip"`          // TFTP server IP
 	BootURI        string   `mapstructure:"boot_uri"`         // HTTP boot URI (UEFI HTTP boot)
+}
+
+// PostgresConfig defines PostgreSQL proxy settings
+// PostgresConfig defines PostgreSQL proxy settings
+type PostgresConfig struct {
+	Enabled  bool                       `mapstructure:"enabled"`
+	Backends map[string]PostgresBackend `mapstructure:"backends"` // Map of backend name to config
+}
+
+// PostgresBackend defines a single PostgreSQL backend
+type PostgresBackend struct {
+	BindAddress string `mapstructure:"bind_address"` // Address to bind on (optional, defaults to server.bind_address)
+	ListenPort  int    `mapstructure:"listen_port"`  // Port to listen on for this backend
+	BackendAddr string `mapstructure:"backend_addr"` // Backend PostgreSQL server (e.g., "postgres-dev:5432")
+	Description string `mapstructure:"description"`  // Human-readable description
 }
 
 // TLSConfig defines certificate authority settings
@@ -204,6 +220,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("dhcp.lease_time", "24h")
 	v.SetDefault("dhcp.dns_servers", []string{})
 
+	// PostgreSQL defaults
+	v.SetDefault("postgres.enabled", false)
+
 	// TLS defaults
 	v.SetDefault("tls.ca_cert", "/etc/kproxy/ca/root-ca.crt")
 	v.SetDefault("tls.ca_key", "/etc/kproxy/ca/root-ca.key")
@@ -268,6 +287,21 @@ func validate(cfg *Config) error {
 	}
 	if cfg.Server.HTTPSPort <= 0 || cfg.Server.HTTPSPort > 65535 {
 		return fmt.Errorf("invalid HTTPS port: %d", cfg.Server.HTTPSPort)
+	}
+
+	// Validate PostgreSQL backends
+	if cfg.Postgres.Enabled {
+		if len(cfg.Postgres.Backends) == 0 {
+			return fmt.Errorf("postgres enabled but no backends configured")
+		}
+		for name, backend := range cfg.Postgres.Backends {
+			if backend.ListenPort <= 0 || backend.ListenPort > 65535 {
+				return fmt.Errorf("invalid PostgreSQL listen port for backend %s: %d", name, backend.ListenPort)
+			}
+			if backend.BackendAddr == "" {
+				return fmt.Errorf("backend_addr is required for PostgreSQL backend %s", name)
+			}
+		}
 	}
 
 	// Validate upstream DNS servers

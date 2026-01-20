@@ -19,6 +19,18 @@ FileDescriptorName=dns-udp
 ListenStream=53
 FileDescriptorName=dns-tcp
 
+# PostgreSQL proxy sockets (optional - uncomment if using PostgreSQL proxy)
+# One socket per backend, named postgres-<backend-name>
+# Example for multiple backends:
+# ListenStream=5432
+# FileDescriptorName=postgres-dev
+#
+# ListenStream=5433
+# FileDescriptorName=postgres-prod
+#
+# ListenStream=5434
+# FileDescriptorName=postgres-analytics
+
 # Metrics HTTP socket
 ListenStream=9090
 FileDescriptorName=metrics

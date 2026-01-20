@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KProxy is a transparent HTTP/HTTPS interception proxy with embedded DNS server for home network parental controls. It uses **fact-based Open Policy Agent (OPA)** evaluation where:
-- **Facts** are gathered from requests (IP, MAC, domain, time, current usage)
+KProxy is a transparent HTTP/HTTPS/PostgreSQL interception proxy with embedded DNS server for home network parental controls. It uses **fact-based Open Policy Agent (OPA)** evaluation where:
+- **Facts** are gathered from requests (IP, MAC, domain, database, username, time, current usage)
 - **Policies** are declarative Rego code defining access rules
 - **Configuration** lives in OPA policies, not database
 
@@ -97,7 +97,7 @@ See `systemd/README.md` for detailed installation and configuration instructions
 #### Implementation Details
 - **Socket activation**: Uses `github.com/coreos/go-systemd/v22/activation` (pure Go, no CGO)
 - **sd_notify**: Uses `github.com/coreos/go-systemd/v22/daemon` (pure Go, no CGO)
-- **Named file descriptors**: HTTP, HTTPS, DNS (UDP/TCP), Metrics
+- **Named file descriptors**: HTTP, HTTPS, DNS (UDP/TCP), PostgreSQL, Metrics
 - **Graceful fallback**: Works with or without systemd (auto-detects)
 
 ## Policy Configuration
@@ -245,8 +245,14 @@ main.go
   │     ├─> Logs requests to structured logger (zerolog)
   │     └─> Generates TLS certificates
   │
+  ├─> PostgreSQL Proxy Server - PostgreSQL connection filtering
+  │     ├─> Gathers facts: IP, MAC, database, username, time
+  │     ├─> Calls OPA for ALLOW/BLOCK decision
+  │     ├─> Logs connections to structured logger (zerolog)
+  │     └─> Forwards connections to backend PostgreSQL server
+  │
   └─> Metrics Server - Prometheus metrics endpoint
-        └─> Exposes metrics for monitoring (requests, DNS queries, blocks, usage, etc.)
+        └─> Exposes metrics for monitoring (requests, DNS queries, blocks, usage, PostgreSQL connections, etc.)
 ```
 
 ### Critical Design Patterns
@@ -323,6 +329,75 @@ Redis stores only operational data:
 4. Match rules by priority
 5. Check usage limits
 6. Return ALLOW/BLOCK with metadata
+
+### PostgreSQL Level (policies/postgres.rego)
+
+**Multi-Backend Architecture:**
+KProxy supports multiple PostgreSQL backends, each listening on a different port. Clients connect to different ports to reach different database clusters:
+- Port 5432 → "dev" backend → postgres-dev.internal:5432
+- Port 5433 → "prod" backend → postgres-prod.internal:5432
+- Port 5434 → "analytics" backend → postgres-warehouse.internal:5432
+
+**Input (facts):**
+```json
+{
+  "client_ip": "192.168.1.100",
+  "client_mac": "aa:bb:cc:dd:ee:ff",
+  "backend": "dev",
+  "database": "myapp",
+  "username": "appuser",
+  "time": {"day_of_week": 2, "hour": 16, "minute": 30}
+}
+```
+
+**Decision logic:**
+1. Identify device (MAC → IP → CIDR)
+2. Get profile from config
+3. Check time restrictions
+4. Match PostgreSQL rules by backend, database, and username patterns
+5. Return ALLOW/BLOCK with metadata
+
+**Policy configuration example:**
+```rego
+profiles := {
+    "developer": {
+        "name": "Developer Profile",
+        "postgres_rules": [
+            {
+                "id": "allow-dev-backend",
+                "backend": "dev",  // Optional: restrict to specific backend
+                "databases": ["myapp_dev", "myapp_test", "myapp_*"],
+                "usernames": ["developer", "dev_*"],
+                "action": "allow",
+                "category": "database"
+            },
+            {
+                "id": "block-prod-backend",
+                "backend": "prod",  // Block access to production backend
+                "databases": ["*"],
+                "usernames": ["*"],
+                "action": "block",
+                "category": "database"
+            }
+        ],
+        "default_action": "block"
+    },
+    "sre": {
+        "name": "SRE Profile",
+        "postgres_rules": [
+            {
+                "id": "allow-prod-readonly",
+                "backend": "prod",
+                "databases": ["*"],
+                "usernames": ["readonly_*"],
+                "action": "allow",
+                "category": "database"
+            }
+        ],
+        "default_action": "block"
+    }
+}
+```
 
 ## Configuration Management
 
@@ -431,10 +506,17 @@ See https://go-acme.github.io/lego/dns/ for provider-specific variables.
 - `kproxy_active_connections` - Active connections
 - `kproxy_dhcp_requests_total` - DHCP requests by type
 - `kproxy_dhcp_leases_active` - Active DHCP leases
+- `kproxy_postgres_connections_total` - PostgreSQL connections by device, database, username, action
+- `kproxy_postgres_connection_duration_seconds` - PostgreSQL connection duration
+- `kproxy_postgres_blocked_connections_total` - Blocked PostgreSQL connections by device, reason
+- `kproxy_postgres_active_connections` - Active PostgreSQL connections
+- `kproxy_postgres_bytes_sent_total` - Bytes sent to PostgreSQL backend by database
+- `kproxy_postgres_bytes_received_total` - Bytes received from PostgreSQL backend by database
 
 **Structured logging** via zerolog:
 - All DNS queries logged to stdout/journal with fields: `client_ip`, `domain`, `query_type`, `action`, `response_ip`, `upstream`, `latency_ms`
 - All HTTP/HTTPS requests logged with fields: `client_ip`, `client_mac`, `method`, `host`, `path`, `user_agent`, `status_code`, `response_size`, `duration_ms`, `action`, `matched_rule`, `reason`, `category`, `encrypted`
+- All PostgreSQL connections logged with fields: `client_ip`, `client_mac`, `database`, `username`, `duration_ms`, `action`, `matched_rule`, `reason`
 - Logs routed via systemd journal, syslog, or log aggregation tools (Vector, Fluentd, etc.)
 
 **Monitoring stack:**
@@ -480,6 +562,18 @@ Policy Engine (Go)
   "usage": {
     "entertainment": {"today_minutes": 45}
   }
+}
+```
+
+**PostgreSQL connection:**
+```json
+{
+  "client_ip": "192.168.1.100",
+  "client_mac": "aa:bb:cc:dd:ee:ff",
+  "backend": "dev",
+  "database": "myapp",
+  "username": "appuser",
+  "time": {"day_of_week": 2, "hour": 16, "minute": 30}
 }
 ```
 

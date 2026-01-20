@@ -21,10 +21,22 @@ devices := {}
 #
 # The default profile below blocks all traffic as a secure baseline.
 # Customize this configuration for your network - see docs/policy-tutorial.md
+#
+# PostgreSQL rules example:
+#   "postgres_rules": [
+#       {
+#           "id": "allow-myapp-db",
+#           "databases": ["myapp", "myapp_*"],  # Database patterns
+#           "usernames": ["appuser"],           # Username patterns (optional)
+#           "action": "allow",
+#           "category": "database"
+#       }
+#   ]
 profiles := {"default": {
 	"name": "Default Profile",
 	"description": "Secure baseline - blocks all traffic",
 	"rules": [],
+	"postgres_rules": [],
 	"time_restrictions": {},
 	"usage_limits": {},
 	"default_action": "block",

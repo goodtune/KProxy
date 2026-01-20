@@ -16,6 +16,7 @@ type Listeners struct {
 	DNSUdp    net.PacketConn
 	DNSTcp    net.Listener
 	DHCP      net.PacketConn
+	Postgres  map[string]net.Listener // Map of backend name to listener
 	Metrics   net.Listener
 	Activated bool
 }
@@ -25,6 +26,7 @@ type Listeners struct {
 func GetListeners() (*Listeners, error) {
 	listeners := &Listeners{
 		Activated: false,
+		Postgres:  make(map[string]net.Listener),
 	}
 
 	// Check if systemd socket activation is available
@@ -46,7 +48,7 @@ func GetListeners() (*Listeners, error) {
 	}
 
 	// Map named file descriptors to our listener structure
-	// Expected names: http, https, dns-udp, dns-tcp, dhcp, metrics
+	// Expected names: http, https, dns-udp, dns-tcp, dhcp, postgres-<backend>, metrics
 
 	if lns, ok := listenersMap["http"]; ok && len(lns) > 0 {
 		listeners.HTTP = lns[0]
@@ -58,6 +60,15 @@ func GetListeners() (*Listeners, error) {
 
 	if lns, ok := listenersMap["dns-tcp"]; ok && len(lns) > 0 {
 		listeners.DNSTcp = lns[0]
+	}
+
+	// PostgreSQL listeners: map all listeners with names starting with "postgres-"
+	// to backend names (e.g., "postgres-dev" -> "dev")
+	for name, lns := range listenersMap {
+		if len(name) > 9 && name[:9] == "postgres-" && len(lns) > 0 {
+			backendName := name[9:] // Extract backend name after "postgres-"
+			listeners.Postgres[backendName] = lns[0]
+		}
 	}
 
 	if lns, ok := listenersMap["metrics"]; ok && len(lns) > 0 {
