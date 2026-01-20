@@ -355,36 +355,46 @@ func runServer(cmd *cobra.Command, args []string) error {
 		Str("https", proxyConfig.HTTPSAddr).
 		Msg("Proxy Server started")
 
-	// Initialize PostgreSQL Proxy Server (if enabled)
-	var postgresServer *postgres.Server
+	// Initialize PostgreSQL Proxy Servers (one per backend)
+	var postgresServers []*postgres.Server
 	if cfg.Postgres.Enabled {
-		if cfg.Postgres.BackendAddr == "" {
-			logger.Warn().Msg("PostgreSQL proxy enabled but no backend_addr configured, skipping")
+		if len(cfg.Postgres.Backends) == 0 {
+			logger.Warn().Msg("PostgreSQL proxy enabled but no backends configured, skipping")
 		} else {
-			postgresConfig := postgres.Config{
-				ListenAddr:  fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.PostgresPort),
-				BackendAddr: cfg.Postgres.BackendAddr,
+			// Start a server for each configured backend
+			for backendName, backendCfg := range cfg.Postgres.Backends {
+				postgresConfig := postgres.Config{
+					BackendName: backendName,
+					ListenAddr:  fmt.Sprintf("%s:%d", cfg.Server.BindAddress, backendCfg.ListenPort),
+					BackendAddr: backendCfg.BackendAddr,
+				}
+
+				postgresServer := postgres.NewServer(
+					postgresConfig,
+					policyEngine,
+					logger,
+				)
+
+				// Use systemd socket-activated listener if available for this backend
+				if sdListeners.Activated {
+					if listener, ok := sdListeners.Postgres[backendName]; ok {
+						postgresServer.SetListener(listener)
+					}
+				}
+
+				if err := postgresServer.Start(postgresConfig.ListenAddr); err != nil {
+					return fmt.Errorf("failed to start PostgreSQL Proxy Server for backend %s: %w", backendName, err)
+				}
+
+				postgresServers = append(postgresServers, postgresServer)
+
+				logger.Info().
+					Str("backend", backendName).
+					Str("listen", postgresConfig.ListenAddr).
+					Str("target", backendCfg.BackendAddr).
+					Str("description", backendCfg.Description).
+					Msg("PostgreSQL Proxy Server started")
 			}
-
-			postgresServer = postgres.NewServer(
-				postgresConfig,
-				policyEngine,
-				logger,
-			)
-
-			// Use systemd socket-activated listener if available
-			if sdListeners.Activated && sdListeners.Postgres != nil {
-				postgresServer.SetListener(sdListeners.Postgres)
-			}
-
-			if err := postgresServer.Start(postgresConfig.ListenAddr); err != nil {
-				return fmt.Errorf("failed to start PostgreSQL Proxy Server: %w", err)
-			}
-
-			logger.Info().
-				Str("listen", postgresConfig.ListenAddr).
-				Str("backend", cfg.Postgres.BackendAddr).
-				Msg("PostgreSQL Proxy Server started")
 		}
 	}
 
@@ -410,8 +420,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 	logger.Info().Msgf("DNS Server: %s:%d", cfg.Server.BindAddress, cfg.Server.DNSPort)
 	logger.Info().Msgf("HTTP Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPPort)
 	logger.Info().Msgf("HTTPS Proxy: %s:%d", cfg.Server.BindAddress, cfg.Server.HTTPSPort)
-	if cfg.Postgres.Enabled && postgresServer != nil {
-		logger.Info().Msgf("PostgreSQL Proxy: %s:%d -> %s", cfg.Server.BindAddress, cfg.Server.PostgresPort, cfg.Postgres.BackendAddr)
+	if cfg.Postgres.Enabled && len(postgresServers) > 0 {
+		for backendName, backendCfg := range cfg.Postgres.Backends {
+			logger.Info().Msgf("PostgreSQL Proxy [%s]: %s:%d -> %s", backendName, cfg.Server.BindAddress, backendCfg.ListenPort, backendCfg.BackendAddr)
+		}
 	}
 	logger.Info().Msgf("Metrics: http://%s:%d/metrics", cfg.Server.BindAddress, cfg.Server.MetricsPort)
 
@@ -472,7 +484,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		logger.Error().Err(err).Msg("Error stopping Proxy Server")
 	}
 
-	if postgresServer != nil {
+	// Stop all PostgreSQL proxy servers
+	for _, postgresServer := range postgresServers {
 		if err := postgresServer.Stop(); err != nil {
 			logger.Error().Err(err).Msg("Error stopping PostgreSQL Proxy Server")
 		}

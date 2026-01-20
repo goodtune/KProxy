@@ -269,6 +269,7 @@ func (e *Engine) buildPostgresFacts(req *PostgresRequest) map[string]interface{}
 	return map[string]interface{}{
 		"client_ip":  req.ClientIP.String(),
 		"client_mac": clientMACStr,
+		"backend":    req.Backend,
 		"database":   req.Database,
 		"username":   req.Username,
 		"time":       currentTime,

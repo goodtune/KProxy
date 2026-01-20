@@ -17,6 +17,7 @@ import (
 // Server handles PostgreSQL proxy connections
 type Server struct {
 	listener     net.Listener
+	backendName  string
 	backendAddr  string
 	policyEngine *policy.Engine
 	logger       zerolog.Logger
@@ -30,6 +31,7 @@ type Server struct {
 
 // Config holds PostgreSQL server configuration
 type Config struct {
+	BackendName string // Name of the backend (e.g., "dev", "prod")
 	ListenAddr  string
 	BackendAddr string // Backend PostgreSQL server address
 }
@@ -43,9 +45,10 @@ func NewServer(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Server{
+		backendName:  config.BackendName,
 		backendAddr:  config.BackendAddr,
 		policyEngine: policyEngine,
-		logger:       logger.With().Str("component", "postgres").Logger(),
+		logger:       logger.With().Str("component", "postgres").Str("backend", config.BackendName).Logger(),
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -155,6 +158,7 @@ func (s *Server) handleConnection(clientConn net.Conn) {
 	// Build policy request
 	policyReq := &policy.PostgresRequest{
 		ClientIP: clientIP,
+		Backend:  s.backendName,
 		Database: connInfo.Database,
 		Username: connInfo.Username,
 	}

@@ -23,17 +23,16 @@ type Config struct {
 
 // ServerConfig defines server ports and addresses
 type ServerConfig struct {
-	DNSPort       int    `mapstructure:"dns_port"`
-	DNSEnableUDP  bool   `mapstructure:"dns_enable_udp"`
-	DNSEnableTCP  bool   `mapstructure:"dns_enable_tcp"`
-	HTTPPort      int    `mapstructure:"http_port"`
-	HTTPSPort     int    `mapstructure:"https_port"`
-	PostgresPort  int    `mapstructure:"postgres_port"`
-	AdminDomain   string `mapstructure:"admin_domain"` // Domain for admin-related requests (kept for compatibility)
-	Name          string `mapstructure:"name"`         // Server name for client setup (default: local.kproxy)
-	MetricsPort   int    `mapstructure:"metrics_port"`
-	BindAddress   string `mapstructure:"bind_address"`
-	ProxyIP       string `mapstructure:"proxy_ip"` // IP address returned in DNS intercept responses
+	DNSPort      int    `mapstructure:"dns_port"`
+	DNSEnableUDP bool   `mapstructure:"dns_enable_udp"`
+	DNSEnableTCP bool   `mapstructure:"dns_enable_tcp"`
+	HTTPPort     int    `mapstructure:"http_port"`
+	HTTPSPort    int    `mapstructure:"https_port"`
+	AdminDomain  string `mapstructure:"admin_domain"` // Domain for admin-related requests (kept for compatibility)
+	Name         string `mapstructure:"name"`         // Server name for client setup (default: local.kproxy)
+	MetricsPort  int    `mapstructure:"metrics_port"`
+	BindAddress  string `mapstructure:"bind_address"`
+	ProxyIP      string `mapstructure:"proxy_ip"` // IP address returned in DNS intercept responses
 }
 
 // DNSConfig defines DNS server settings
@@ -65,9 +64,17 @@ type DHCPConfig struct {
 }
 
 // PostgresConfig defines PostgreSQL proxy settings
+// PostgresConfig defines PostgreSQL proxy settings
 type PostgresConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	BackendAddr string `mapstructure:"backend_addr"` // Backend PostgreSQL server (e.g., "localhost:5432")
+	Enabled  bool                       `mapstructure:"enabled"`
+	Backends map[string]PostgresBackend `mapstructure:"backends"` // Map of backend name to config
+}
+
+// PostgresBackend defines a single PostgreSQL backend
+type PostgresBackend struct {
+	ListenPort  int    `mapstructure:"listen_port"`  // Port to listen on for this backend
+	BackendAddr string `mapstructure:"backend_addr"` // Backend PostgreSQL server (e.g., "postgres-dev:5432")
+	Description string `mapstructure:"description"`  // Human-readable description
 }
 
 // TLSConfig defines certificate authority settings
@@ -186,7 +193,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.dns_enable_tcp", true)
 	v.SetDefault("server.http_port", 80)
 	v.SetDefault("server.https_port", 443)
-	v.SetDefault("server.postgres_port", 5432)
 	v.SetDefault("server.admin_domain", "kproxy.home.local")
 	v.SetDefault("server.name", "local.kproxy")
 	v.SetDefault("server.metrics_port", 9090)
@@ -215,7 +221,6 @@ func setDefaults(v *viper.Viper) {
 
 	// PostgreSQL defaults
 	v.SetDefault("postgres.enabled", false)
-	v.SetDefault("postgres.backend_addr", "localhost:5433")
 
 	// TLS defaults
 	v.SetDefault("tls.ca_cert", "/etc/kproxy/ca/root-ca.crt")
@@ -282,8 +287,20 @@ func validate(cfg *Config) error {
 	if cfg.Server.HTTPSPort <= 0 || cfg.Server.HTTPSPort > 65535 {
 		return fmt.Errorf("invalid HTTPS port: %d", cfg.Server.HTTPSPort)
 	}
-	if cfg.Server.PostgresPort <= 0 || cfg.Server.PostgresPort > 65535 {
-		return fmt.Errorf("invalid PostgreSQL port: %d", cfg.Server.PostgresPort)
+
+	// Validate PostgreSQL backends
+	if cfg.Postgres.Enabled {
+		if len(cfg.Postgres.Backends) == 0 {
+			return fmt.Errorf("postgres enabled but no backends configured")
+		}
+		for name, backend := range cfg.Postgres.Backends {
+			if backend.ListenPort <= 0 || backend.ListenPort > 65535 {
+				return fmt.Errorf("invalid PostgreSQL listen port for backend %s: %d", name, backend.ListenPort)
+			}
+			if backend.BackendAddr == "" {
+				return fmt.Errorf("backend_addr is required for PostgreSQL backend %s", name)
+			}
+		}
 	}
 
 	// Validate upstream DNS servers

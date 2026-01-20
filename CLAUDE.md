@@ -332,11 +332,18 @@ Redis stores only operational data:
 
 ### PostgreSQL Level (policies/postgres.rego)
 
+**Multi-Backend Architecture:**
+KProxy supports multiple PostgreSQL backends, each listening on a different port. Clients connect to different ports to reach different database clusters:
+- Port 5432 → "dev" backend → postgres-dev.internal:5432
+- Port 5433 → "prod" backend → postgres-prod.internal:5432
+- Port 5434 → "analytics" backend → postgres-warehouse.internal:5432
+
 **Input (facts):**
 ```json
 {
   "client_ip": "192.168.1.100",
   "client_mac": "aa:bb:cc:dd:ee:ff",
+  "backend": "dev",
   "database": "myapp",
   "username": "appuser",
   "time": {"day_of_week": 2, "hour": 16, "minute": 30}
@@ -347,7 +354,7 @@ Redis stores only operational data:
 1. Identify device (MAC → IP → CIDR)
 2. Get profile from config
 3. Check time restrictions
-4. Match PostgreSQL rules by database and username patterns
+4. Match PostgreSQL rules by backend, database, and username patterns
 5. Return ALLOW/BLOCK with metadata
 
 **Policy configuration example:**
@@ -357,17 +364,33 @@ profiles := {
         "name": "Developer Profile",
         "postgres_rules": [
             {
-                "id": "allow-dev-databases",
+                "id": "allow-dev-backend",
+                "backend": "dev",  // Optional: restrict to specific backend
                 "databases": ["myapp_dev", "myapp_test", "myapp_*"],
                 "usernames": ["developer", "dev_*"],
                 "action": "allow",
                 "category": "database"
             },
             {
-                "id": "block-production",
-                "databases": ["myapp_prod"],
+                "id": "block-prod-backend",
+                "backend": "prod",  // Block access to production backend
+                "databases": ["*"],
                 "usernames": ["*"],
                 "action": "block",
+                "category": "database"
+            }
+        ],
+        "default_action": "block"
+    },
+    "sre": {
+        "name": "SRE Profile",
+        "postgres_rules": [
+            {
+                "id": "allow-prod-readonly",
+                "backend": "prod",
+                "databases": ["*"],
+                "usernames": ["readonly_*"],
+                "action": "allow",
                 "category": "database"
             }
         ],
@@ -547,6 +570,7 @@ Policy Engine (Go)
 {
   "client_ip": "192.168.1.100",
   "client_mac": "aa:bb:cc:dd:ee:ff",
+  "backend": "dev",
   "database": "myapp",
   "username": "appuser",
   "time": {"day_of_week": 2, "hour": 16, "minute": 30}

@@ -9,7 +9,6 @@ server:
   # Proxy ports
   http_port: 80
   https_port: 443
-  postgres_port: 5432
 
   # Server name for client setup (certificate download, etc.)
   # This domain is always intercepted and allowed for all devices
@@ -83,17 +82,38 @@ dhcp:
 
 postgres:
   # Enable/disable PostgreSQL proxy
-  # When enabled, KProxy intercepts PostgreSQL connections on port 5432
-  # and forwards them to a backend PostgreSQL server after policy evaluation
+  # When enabled, KProxy intercepts PostgreSQL connections on multiple ports
+  # and forwards them to different backend PostgreSQL servers after policy evaluation
   enabled: false
 
-  # Backend PostgreSQL server address
-  # This is the actual PostgreSQL server that KProxy will forward connections to
-  # Format: "host:port"
-  # Example: "localhost:5433" or "postgres.internal:5432"
-  backend_addr: "localhost:5433"
+  # PostgreSQL backends - map of backend name to configuration
+  # Each backend listens on a different port and routes to a different PostgreSQL server
+  # This allows port-based routing to different database clusters
+  backends:
+    dev:
+      listen_port: 5432
+      backend_addr: "postgres-dev.internal:5432"
+      description: "Development cluster - unrestricted access for developers"
 
-  # NOTE: Configure PostgreSQL access rules in policies/config.rego
+    prod:
+      listen_port: 5433
+      backend_addr: "postgres-prod.internal:5432"
+      description: "Production cluster - restricted to application users"
+
+    analytics:
+      listen_port: 5434
+      backend_addr: "postgres-warehouse.internal:5432"
+      description: "Analytics data warehouse - read-only access"
+
+  # Port-based routing:
+  # - Clients connect to KProxy on different ports to reach different backends
+  # - psql -h kproxy -p 5432 -U developer myapp_dev   # Routes to dev backend
+  # - psql -h kproxy -p 5433 -U appuser myapp_prod    # Routes to prod backend
+  # - psql -h kproxy -p 5434 -U analyst warehouse     # Routes to analytics backend
+
+  # Configure PostgreSQL access rules in policies/config.rego
+  # The backend name is available in policy evaluation for fine-grained control
+  #
   # Example policy configuration:
   #
   # profiles := {
@@ -101,11 +121,18 @@ postgres:
   #     "name": "Developer Profile",
   #     "postgres_rules": [
   #       {
-  #         "id": "allow-dev-databases",
+  #         "id": "allow-dev-backend",
+  #         "backend": "dev",                    # Optional: restrict to specific backend
   #         "databases": ["myapp_dev", "myapp_test"],
   #         "usernames": ["developer"],
   #         "action": "allow",
   #         "category": "database"
+  #       },
+  #       {
+  #         "id": "block-prod-backend",
+  #         "backend": "prod",
+  #         "databases": ["*"],
+  #         "action": "block"
   #       }
   #     ],
   #     "default_action": "block"

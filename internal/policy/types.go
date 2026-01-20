@@ -147,6 +147,7 @@ type DNSRequest struct {
 type PostgresRequest struct {
 	ClientIP  net.IP
 	ClientMAC net.HardwareAddr
+	Backend   string // Backend name (e.g., "dev", "prod", "analytics")
 	Database  string
 	Username  string
 }
