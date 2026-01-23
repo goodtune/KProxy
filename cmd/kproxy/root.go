@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	version    = "dev"
-	configPath string
+	version       = "dev"
+	configPath    string
+	enableSnoopy  bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -29,6 +30,7 @@ server for home network parental controls. It uses fact-based Open Policy Agent
 func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "/etc/kproxy/config.yaml", "Path to configuration file")
+	rootCmd.PersistentFlags().BoolVar(&enableSnoopy, "snoopy", false, "Enable snoopy mDNS discovery and enforcement")
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

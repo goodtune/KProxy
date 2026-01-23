@@ -64,6 +64,22 @@ decision := {
 	helpers.match_domain(input.domain, input.server_name)
 }
 
+# Priority 0.5: Block if snoopy is required but not active
+decision := {
+	"action": "BLOCK",
+	"reason": "snoopy unavailable",
+} if {
+	not helpers.match_domain(input.domain, input.server_name)
+	dev := device.identified_device
+	profile := config.profiles[dev.profile]
+
+	# Profile requires snoopy
+	profile.snoopy_required == true
+
+	# But snoopy is not active on this client
+	input.snoopy_active == false
+}
+
 # Priority 1: Global bypass domains (system-critical services)
 decision := {
 	"action": "BYPASS",

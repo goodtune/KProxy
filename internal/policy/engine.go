@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/goodtune/kproxy/internal/policy/opa"
+	"github.com/goodtune/kproxy/internal/snoopy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/rs/zerolog"
 )
@@ -19,12 +20,13 @@ type UsageTracker interface {
 
 // Engine handles policy evaluation by gathering facts and calling OPA
 type Engine struct {
-	usageStore   storage.UsageStore
-	usageTracker UsageTracker
-	opaEngine    *opa.Engine
-	clock        Clock
-	serverName   string // Server name for client setup (e.g., "local.kproxy")
-	logger       zerolog.Logger
+	usageStore     storage.UsageStore
+	usageTracker   UsageTracker
+	snoopyRegistry *snoopy.Registry
+	opaEngine      *opa.Engine
+	clock          Clock
+	serverName     string // Server name for client setup (e.g., "local.kproxy")
+	logger         zerolog.Logger
 }
 
 // NewEngine creates a new fact-based policy engine
@@ -59,6 +61,11 @@ func (e *Engine) SetClock(clock Clock) {
 // SetUsageTracker sets the usage tracker for the policy engine
 func (e *Engine) SetUsageTracker(tracker UsageTracker) {
 	e.usageTracker = tracker
+}
+
+// SetSnoopyRegistry sets the snoopy registry for the policy engine
+func (e *Engine) SetSnoopyRegistry(registry *snoopy.Registry) {
+	e.snoopyRegistry = registry
 }
 
 // GetDNSAction determines the DNS action for a query using OPA
@@ -142,11 +149,18 @@ func (e *Engine) buildDNSFacts(clientIP net.IP, clientMAC net.HardwareAddr, doma
 		clientMACStr = clientMAC.String()
 	}
 
+	// Check snoopy status if registry is available
+	snoopyActive := false
+	if e.snoopyRegistry != nil {
+		snoopyActive = e.snoopyRegistry.IsActive(clientIP)
+	}
+
 	return map[string]interface{}{
-		"client_ip":   clientIP.String(),
-		"client_mac":  clientMACStr,
-		"domain":      domain,
-		"server_name": e.serverName,
+		"client_ip":     clientIP.String(),
+		"client_mac":    clientMACStr,
+		"domain":        domain,
+		"server_name":   e.serverName,
+		"snoopy_active": snoopyActive,
 	}
 }
 
@@ -168,15 +182,22 @@ func (e *Engine) buildProxyFacts(req *ProxyRequest) map[string]interface{} {
 	// Gather usage facts from database
 	usageFacts := e.gatherUsageFacts(req.ClientIP, req.ClientMAC)
 
+	// Check snoopy status if registry is available
+	snoopyActive := false
+	if e.snoopyRegistry != nil {
+		snoopyActive = e.snoopyRegistry.IsActive(req.ClientIP)
+	}
+
 	return map[string]interface{}{
-		"client_ip":   req.ClientIP.String(),
-		"client_mac":  clientMACStr,
-		"host":        req.Host,
-		"path":        req.Path,
-		"method":      req.Method,
-		"time":        currentTime,
-		"usage":       usageFacts,
-		"server_name": e.serverName,
+		"client_ip":     req.ClientIP.String(),
+		"client_mac":    clientMACStr,
+		"host":          req.Host,
+		"path":          req.Path,
+		"method":        req.Method,
+		"time":          currentTime,
+		"usage":         usageFacts,
+		"server_name":   e.serverName,
+		"snoopy_active": snoopyActive,
 	}
 }
 

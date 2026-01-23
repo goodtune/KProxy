@@ -288,6 +288,11 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if decision.Action == policy.ActionBlock {
 			metrics.BlockedRequests.WithLabelValues(deviceName, decision.Reason).Inc()
+
+			// Record snoopy-specific block if applicable
+			if decision.Reason == "snoopy unavailable" {
+				metrics.SnoopyBlocksTotal.WithLabelValues(deviceName, clientIP.String()).Inc()
+			}
 		}
 	}()
 
@@ -359,6 +364,11 @@ func (s *Server) handleHTTPS(w http.ResponseWriter, r *http.Request) {
 
 		if decision.Action == policy.ActionBlock {
 			metrics.BlockedRequests.WithLabelValues(deviceName, decision.Reason).Inc()
+
+			// Record snoopy-specific block if applicable
+			if decision.Reason == "snoopy unavailable" {
+				metrics.SnoopyBlocksTotal.WithLabelValues(deviceName, clientIP.String()).Inc()
+			}
 		}
 	}()
 

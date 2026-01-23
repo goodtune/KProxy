@@ -19,6 +19,7 @@ import (
 	"github.com/goodtune/kproxy/internal/policy"
 	"github.com/goodtune/kproxy/internal/policy/opa"
 	"github.com/goodtune/kproxy/internal/proxy"
+	"github.com/goodtune/kproxy/internal/snoopy"
 	"github.com/goodtune/kproxy/internal/storage"
 	"github.com/goodtune/kproxy/internal/storage/redis"
 	"github.com/goodtune/kproxy/internal/systemd"
@@ -180,6 +181,28 @@ func runServer(cmd *cobra.Command, args []string) error {
 	logger.Info().
 		Str("opa_source", opaConfig.Source).
 		Msg("Fact-based Policy Engine initialized (configuration in OPA policies)")
+
+	// Initialize Snoopy Registry (if enabled)
+	var snoopyRegistry *snoopy.Registry
+	if enableSnoopy {
+		snoopyConfig := snoopy.Config{
+			ScanInterval: 30 * time.Second,
+			ServerTTL:    90 * time.Second,
+		}
+
+		snoopyRegistry = snoopy.NewRegistry(snoopyConfig, logger)
+		snoopyRegistry.Start()
+
+		// Connect snoopy registry to policy engine
+		policyEngine.SetSnoopyRegistry(snoopyRegistry)
+
+		logger.Info().
+			Dur("scan_interval", snoopyConfig.ScanInterval).
+			Dur("server_ttl", snoopyConfig.ServerTTL).
+			Msg("Snoopy mDNS discovery enabled")
+	} else {
+		logger.Info().Msg("Snoopy integration disabled (use --snoopy to enable)")
+	}
 
 	// Initialize Usage Tracker
 	usageTracker := usage.NewTracker(
@@ -420,6 +443,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// Stop servers
 	resetScheduler.Stop()
+
+	if snoopyRegistry != nil {
+		snoopyRegistry.Stop()
+	}
 
 	if err := dnsServer.Stop(); err != nil {
 		logger.Error().Err(err).Msg("Error stopping DNS Server")
