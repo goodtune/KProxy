@@ -117,6 +117,30 @@ var (
 			Help: "Number of active DHCP leases",
 		},
 	)
+
+	// Snoopy metrics
+	SnoopyServersActive = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "kproxy_snoopy_servers_active",
+			Help: "Number of active snoopy servers discovered via mDNS",
+		},
+	)
+
+	SnoopyDiscoveriesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_snoopy_discoveries_total",
+			Help: "Total snoopy server discoveries",
+		},
+		[]string{"ip", "hostname"},
+	)
+
+	SnoopyBlocksTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kproxy_snoopy_blocks_total",
+			Help: "Total requests blocked due to missing snoopy",
+		},
+		[]string{"device", "ip"},
+	)
 )
 
 func init() {
@@ -135,6 +159,9 @@ func init() {
 		ActiveConnections,
 		DHCPRequestsTotal,
 		DHCPLeasesActive,
+		SnoopyServersActive,
+		SnoopyDiscoveriesTotal,
+		SnoopyBlocksTotal,
 	)
 }
 

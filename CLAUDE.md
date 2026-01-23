@@ -12,7 +12,7 @@ KProxy is a transparent HTTP/HTTPS interception proxy with embedded DNS server f
 ## Architecture Philosophy: Facts → OPA → Decision
 
 KProxy follows a clean separation of concerns:
-1. **Go code gathers facts**: Client IP/MAC, domain, time, current usage from database
+1. **Go code gathers facts**: Client IP/MAC, domain, time, current usage from database, snoopy status (if enabled)
 2. **OPA evaluates policies**: Rego policies define devices, profiles, rules, and make decisions
 3. **Go code enforces decisions**: Block, allow, inject timer, log requests
 
@@ -47,7 +47,55 @@ opa test policies/  # Test OPA policies
 ```bash
 make run            # Run kproxy locally with example config
 sudo ./bin/kproxy -config /etc/kproxy/config.yaml  # Run with custom config
+sudo ./bin/kproxy --snoopy  # Run with snoopy mDNS discovery enabled
 ```
+
+### Snoopy Integration
+
+KProxy can integrate with **snoopy** for surveillance monitoring. When enabled with `--snoopy`, KProxy discovers snoopy servers on the network via mDNS and enforces surveillance requirements in policies.
+
+#### Features
+- **Automatic Discovery**: Discovers snoopy servers via mDNS (_snoopy._tcp service type)
+- **Policy Enforcement**: Profiles can require snoopy to be running on devices
+- **Blind Spot Prevention**: Blocks access when snoopy is required but not detected
+- **Real-time Monitoring**: Continuously monitors snoopy availability (30s scan interval, 90s TTL)
+- **Metrics**: Prometheus metrics for snoopy server discovery and blocks
+
+#### Usage
+```bash
+# Enable snoopy integration
+sudo ./bin/kproxy --snoopy
+
+# Configure profile to require snoopy
+# Edit policies/config.rego:
+profiles := {
+    "monitored": {
+        "name": "Monitored Profile",
+        "snoopy_required": true,  # Require snoopy surveillance
+        "rules": [...],
+        ...
+    }
+}
+```
+
+#### How It Works
+1. **mDNS Discovery**: Background worker scans for snoopy servers advertising `_snoopy._tcp` service
+2. **Registry**: Maintains index of active snoopy servers by IP address
+3. **Policy Facts**: Adds `snoopy_active` (boolean) to policy evaluation facts
+4. **Enforcement**: OPA policies check `profile.snoopy_required` and block if snoopy not detected
+5. **Metrics**: Records discoveries, active servers, and blocks in Prometheus
+
+#### Metrics
+- `kproxy_snoopy_servers_active`: Number of active snoopy servers
+- `kproxy_snoopy_discoveries_total`: Total snoopy server discoveries
+- `kproxy_snoopy_blocks_total`: Requests blocked due to missing snoopy
+
+#### Block Reason
+When snoopy is required but not active, requests are blocked with:
+- **Reason**: `"snoopy unavailable"`
+- **Block Page**: `"snoopy_required"`
+
+This prevents surveillance blind spots by ensuring monitoring coverage before granting access.
 
 ### CA Certificate Generation
 
@@ -292,9 +340,12 @@ Redis stores only operational data:
 {
   "client_ip": "192.168.1.100",
   "client_mac": "aa:bb:cc:dd:ee:ff",
-  "domain": "youtube.com"
+  "domain": "youtube.com",
+  "snoopy_active": false
 }
 ```
+
+Note: `snoopy_active` is only included when KProxy is run with `--snoopy` flag.
 
 **Decision:**
 - Check global bypass domains → BYPASS
@@ -312,15 +363,19 @@ Redis stores only operational data:
   "time": {"day_of_week": 2, "hour": 16, "minute": 30},
   "usage": {
     "entertainment": {"today_minutes": 45}
-  }
+  },
+  "snoopy_active": false
 }
 ```
+
+Note: `snoopy_active` is only included when KProxy is run with `--snoopy` flag.
 
 **Decision logic:**
 1. Identify device (MAC → IP → CIDR)
 2. Get profile from config
-3. Check time restrictions
-4. Match rules by priority
+3. Check snoopy requirements (if profile.snoopy_required)
+4. Check time restrictions
+5. Match rules by priority
 5. Check usage limits
 6. Return ALLOW/BLOCK with metadata
 
@@ -431,6 +486,9 @@ See https://go-acme.github.io/lego/dns/ for provider-specific variables.
 - `kproxy_active_connections` - Active connections
 - `kproxy_dhcp_requests_total` - DHCP requests by type
 - `kproxy_dhcp_leases_active` - Active DHCP leases
+- `kproxy_snoopy_servers_active` - Active snoopy servers discovered via mDNS (requires --snoopy)
+- `kproxy_snoopy_discoveries_total` - Total snoopy server discoveries (requires --snoopy)
+- `kproxy_snoopy_blocks_total` - Requests blocked due to missing snoopy (requires --snoopy)
 
 **Structured logging** via zerolog:
 - All DNS queries logged to stdout/journal with fields: `client_ip`, `domain`, `query_type`, `action`, `response_ip`, `upstream`, `latency_ms`

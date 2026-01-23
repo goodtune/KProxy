@@ -21,6 +21,11 @@ devices := {}
 #
 # The default profile below blocks all traffic as a secure baseline.
 # Customize this configuration for your network - see docs/policy-tutorial.md
+#
+# snoopy_required: (optional, default false) When true, requires snoopy to be
+#                  running on the device. If snoopy is not detected via mDNS,
+#                  access will be blocked with reason "snoopy unavailable".
+#                  This ensures surveillance coverage and prevents blind spots.
 profiles := {"default": {
 	"name": "Default Profile",
 	"description": "Secure baseline - blocks all traffic",
@@ -28,6 +33,7 @@ profiles := {"default": {
 	"time_restrictions": {},
 	"usage_limits": {},
 	"default_action": "block",
+	"snoopy_required": false,
 }}
 
 # Global Bypass Domains

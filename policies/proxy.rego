@@ -72,6 +72,28 @@ decision := {
 	not config.profiles[dev.profile]
 }
 
+# Decision 2.5: Block if snoopy is required but not active
+decision := {
+	"action": "BLOCK",
+	"reason": "snoopy unavailable",
+	"block_page": "snoopy_required",
+	"matched_rule_id": "",
+	"category": "",
+	"inject_timer": false,
+	"time_remaining_minutes": 0,
+	"usage_limit_id": "",
+} if {
+	not helpers.match_domain(input.host, input.server_name)
+	dev := device.identified_device
+	profile := config.profiles[dev.profile]
+
+	# Profile requires snoopy
+	profile.snoopy_required == true
+
+	# But snoopy is not active on this client
+	input.snoopy_active == false
+}
+
 # Decision 3: Block if outside allowed time window
 decision := {
 	"action": "BLOCK",
