@@ -2,111 +2,158 @@ package ca
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/json"
 	"encoding/pem"
-	"io"
-	"math/big"
-	"net/http"
-	"net/http/httptest"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
+	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/rs/zerolog"
+	tcvault "github.com/testcontainers/testcontainers-go/modules/vault"
 )
 
-// testVaultPKI is a small in-memory CA used by the mock Vault server to sign
-// incoming CSRs, mirroring what a real Vault PKI engine would do.
-type testVaultPKI struct {
-	cert    *x509.Certificate
-	key     *ecdsa.PrivateKey
-	certPEM []byte
+// These tests run against a real HashiCorp Vault instance started in a
+// container via testcontainers-go. A single Vault container is started once
+// for the package (TestMain), its PKI secrets engine and AppRole auth method
+// are configured exactly as documented in docs/vault-setup.md, and every test
+// exercises VaultCA against it. Running these tests requires a working Docker
+// daemon.
+
+const (
+	vaultImage     = "hashicorp/vault:1.21"
+	vaultRootToken = "root-token"
+	vaultRootCN    = "KProxy Root CA"
+)
+
+// Populated by TestMain after the container is configured.
+var (
+	vaultAddr     string
+	vaultRoleID   string
+	vaultSecretID string
+)
+
+func TestMain(m *testing.M) {
+	ctx := context.Background()
+
+	container, err := tcvault.Run(ctx, vaultImage, tcvault.WithToken(vaultRootToken))
+	if err != nil {
+		log.Fatalf("failed to start Vault container (is Docker running?): %v", err)
+	}
+
+	addr, err := container.HttpHostAddress(ctx)
+	if err != nil {
+		_ = container.Terminate(ctx)
+		log.Fatalf("failed to get Vault address: %v", err)
+	}
+	vaultAddr = addr
+
+	if err := setupVaultPKI(ctx, addr, vaultRootToken); err != nil {
+		_ = container.Terminate(ctx)
+		log.Fatalf("failed to configure Vault PKI/AppRole: %v", err)
+	}
+
+	code := m.Run()
+
+	// os.Exit skips deferred calls, so terminate explicitly.
+	if err := container.Terminate(ctx); err != nil {
+		log.Printf("failed to terminate Vault container: %v", err)
+	}
+	os.Exit(code)
 }
 
-func newTestVaultPKI(t *testing.T) *testVaultPKI {
-	t.Helper()
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+// setupVaultPKI configures the running Vault exactly like the operator guide:
+// it enables and seeds the PKI engine, creates the kproxy signing role and
+// policy, enables AppRole, and mints the role_id/secret_id used by the tests.
+func setupVaultPKI(ctx context.Context, addr, token string) error {
+	cfg := vaultapi.DefaultConfig()
+	cfg.Address = addr
+	client, err := vaultapi.NewClient(cfg)
 	if err != nil {
-		t.Fatalf("failed to generate CA key: %v", err)
+		return fmt.Errorf("new admin client: %w", err)
+	}
+	client.SetToken(token)
+
+	// Enable and tune the PKI secrets engine.
+	if err := client.Sys().MountWithContext(ctx, "pki", &vaultapi.MountInput{
+		Type:   "pki",
+		Config: vaultapi.MountConfigInput{MaxLeaseTTL: "8760h"},
+	}); err != nil {
+		return fmt.Errorf("mount pki: %w", err)
 	}
 
-	template := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "Test Vault Root CA"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
+	// Generate the root CA.
+	if _, err := client.Logical().WriteWithContext(ctx, "pki/root/generate/internal", map[string]interface{}{
+		"common_name": vaultRootCN,
+		"ttl":         "87600h",
+	}); err != nil {
+		return fmt.Errorf("generate root CA: %w", err)
 	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("failed to create CA cert: %v", err)
-	}
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatalf("failed to parse CA cert: %v", err)
-	}
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 
-	return &testVaultPKI{cert: cert, key: key, certPEM: certPEM}
+	// Create the signing role. KProxy intercepts arbitrary hostnames and sends
+	// a CSR, so any name is allowed, hostname enforcement is off, and the key
+	// type is "any" (KProxy generates the key locally).
+	if _, err := client.Logical().WriteWithContext(ctx, "pki/roles/kproxy", map[string]interface{}{
+		"allow_any_name":    true,
+		"enforce_hostnames": false,
+		"key_type":          "any",
+		"max_ttl":           "48h",
+	}); err != nil {
+		return fmt.Errorf("create pki role: %w", err)
+	}
+
+	// Policy granting only the two capabilities KProxy needs.
+	policy := `path "pki/sign/kproxy" { capabilities = ["update"] }
+path "pki/ca/pem"      { capabilities = ["read"] }`
+	if err := client.Sys().PutPolicyWithContext(ctx, "kproxy", policy); err != nil {
+		return fmt.Errorf("put policy: %w", err)
+	}
+
+	// Enable AppRole and create the kproxy role.
+	if err := client.Sys().EnableAuthWithOptionsWithContext(ctx, "approle", &vaultapi.EnableAuthOptions{
+		Type: "approle",
+	}); err != nil {
+		return fmt.Errorf("enable approle: %w", err)
+	}
+	if _, err := client.Logical().WriteWithContext(ctx, "auth/approle/role/kproxy", map[string]interface{}{
+		"token_policies": "kproxy",
+		"token_ttl":      "1h",
+		"token_max_ttl":  "4h",
+	}); err != nil {
+		return fmt.Errorf("create approle role: %w", err)
+	}
+
+	// Fetch the role_id (non-secret) and mint a secret_id.
+	ridSec, err := client.Logical().ReadWithContext(ctx, "auth/approle/role/kproxy/role-id")
+	if err != nil {
+		return fmt.Errorf("read role-id: %w", err)
+	}
+	vaultRoleID, _ = ridSec.Data["role_id"].(string)
+
+	sidSec, err := client.Logical().WriteWithContext(ctx, "auth/approle/role/kproxy/secret-id", nil)
+	if err != nil {
+		return fmt.Errorf("generate secret-id: %w", err)
+	}
+	vaultSecretID, _ = sidSec.Data["secret_id"].(string)
+
+	if vaultRoleID == "" || vaultSecretID == "" {
+		return fmt.Errorf("vault returned empty role_id or secret_id")
+	}
+	return nil
 }
 
-// sign parses a PEM CSR and issues a leaf certificate PEM signed by the test CA.
-func (p *testVaultPKI) sign(t *testing.T, csrPEM string) string {
-	t.Helper()
-
-	block, _ := pem.Decode([]byte(csrPEM))
-	if block == nil {
-		t.Fatalf("failed to decode CSR PEM")
-	}
-	csr, err := x509.ParseCertificateRequest(block.Bytes)
-	if err != nil {
-		t.Fatalf("failed to parse CSR: %v", err)
-	}
-	if err := csr.CheckSignature(); err != nil {
-		t.Fatalf("CSR signature invalid: %v", err)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject:      csr.Subject,
-		DNSNames:     csr.DNSNames,
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	leafDER, err := x509.CreateCertificate(rand.Reader, template, p.cert, csr.PublicKey, p.key)
-	if err != nil {
-		t.Fatalf("failed to sign leaf cert: %v", err)
-	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER}))
-}
-
-// mockVaultServer wires the three endpoints VaultCA calls.
-// It delegates to mockVaultServerWithOpts with default (zero-value) options so
-// all existing tests continue to work unchanged.
-func mockVaultServer(t *testing.T, pki *testVaultPKI, signCount *int) *httptest.Server {
-	t.Helper()
-	return mockVaultServerWithOpts(t, pki, signCount, mockVaultSignOpts{})
-}
-
-func testVaultConfig(addr string) VaultCAConfig {
+// newVaultCAConfig returns a VaultCAConfig pointing at the test container with
+// valid AppRole credentials.
+func newVaultCAConfig() VaultCAConfig {
 	return VaultCAConfig{
-		Address:      addr,
+		Address:      vaultAddr,
 		AppRoleMount: "approle",
-		RoleID:       "test-role-id",
-		SecretID:     "test-secret-id",
+		RoleID:       vaultRoleID,
+		SecretID:     vaultSecretID,
 		PKIMount:     "pki",
 		PKIRole:      "kproxy",
 		TTL:          time.Hour,
@@ -115,34 +162,51 @@ func testVaultConfig(addr string) VaultCAConfig {
 	}
 }
 
-func TestNewVaultCA(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	srv := mockVaultServer(t, pki, nil)
+// rootPool builds a cert pool from the issuer's root cert for chain verification.
+func rootPool(t *testing.T, v *VaultCA) *x509.CertPool {
+	t.Helper()
+	rootPEM, err := v.GetRootCertPEM()
+	if err != nil {
+		t.Fatalf("GetRootCertPEM failed: %v", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(rootPEM) {
+		t.Fatal("failed to add Vault root CA to pool")
+	}
+	return pool
+}
 
-	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+func TestNewVaultCA(t *testing.T) {
+	v, err := NewVaultCA(context.Background(), newVaultCAConfig(), zerolog.Nop())
 	if err != nil {
 		t.Fatalf("NewVaultCA failed: %v", err)
 	}
 	defer v.Close()
 
-	if v.client.Token() != "test-token" {
-		t.Errorf("expected client token to be set to test-token, got %q", v.client.Token())
+	// AppRole login must have set a token on the client.
+	if v.client.Token() == "" {
+		t.Error("expected client token to be set after AppRole login, got empty")
 	}
 
 	root, err := v.GetRootCertPEM()
 	if err != nil {
 		t.Fatalf("GetRootCertPEM failed: %v", err)
 	}
-	if string(root) != string(pki.certPEM) {
-		t.Errorf("root cert PEM does not match mock CA PEM")
+	block, _ := pem.Decode(root)
+	if block == nil {
+		t.Fatal("root cert PEM did not decode")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("root cert did not parse: %v", err)
+	}
+	if cert.Subject.CommonName != vaultRootCN {
+		t.Errorf("expected root CN %q, got %q", vaultRootCN, cert.Subject.CommonName)
 	}
 }
 
 func TestVaultCAGetCertificate(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	srv := mockVaultServer(t, pki, nil)
-
-	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+	v, err := NewVaultCA(context.Background(), newVaultCAConfig(), zerolog.Nop())
 	if err != nil {
 		t.Fatalf("NewVaultCA failed: %v", err)
 	}
@@ -161,53 +225,47 @@ func TestVaultCAGetCertificate(t *testing.T) {
 		t.Errorf("expected CommonName %q, got %q", hostname, cert.Leaf.Subject.CommonName)
 	}
 
-	// Verify the leaf chains to the test CA.
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(pki.certPEM) {
-		t.Fatal("failed to add test CA to pool")
-	}
+	// The leaf must chain to the Vault root CA.
 	if _, err := cert.Leaf.Verify(x509.VerifyOptions{
 		DNSName: hostname,
-		Roots:   roots,
+		Roots:   rootPool(t, v),
 	}); err != nil {
-		t.Errorf("certificate failed to verify against test CA: %v", err)
+		t.Errorf("certificate failed to verify against Vault root CA: %v", err)
 	}
 
-	// The served chain should include the issuing CA.
+	// Vault returns the issuer chain (ca_chain), so the served chain should
+	// include the issuing CA alongside the leaf.
 	if len(cert.Certificate) < 2 {
 		t.Errorf("expected served chain to include issuer, got %d certs", len(cert.Certificate))
 	}
 }
 
 func TestVaultCACaching(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	var signCount int
-	srv := mockVaultServer(t, pki, &signCount)
-
-	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+	v, err := NewVaultCA(context.Background(), newVaultCAConfig(), zerolog.Nop())
 	if err != nil {
 		t.Fatalf("NewVaultCA failed: %v", err)
 	}
 	defer v.Close()
 
 	hello := &tls.ClientHelloInfo{ServerName: "cache.example.com"}
-	if _, err := v.GetCertificate(hello); err != nil {
+	first, err := v.GetCertificate(hello)
+	if err != nil {
 		t.Fatalf("first GetCertificate failed: %v", err)
 	}
-	if _, err := v.GetCertificate(hello); err != nil {
+	second, err := v.GetCertificate(hello)
+	if err != nil {
 		t.Fatalf("second GetCertificate failed: %v", err)
 	}
 
-	if signCount != 1 {
-		t.Errorf("expected Vault sign endpoint to be hit once, got %d", signCount)
+	// A cache hit returns the identical cached certificate; a second Vault sign
+	// would have produced a distinct *tls.Certificate (and a new serial).
+	if first != second {
+		t.Error("expected second GetCertificate to return the cached certificate, got a freshly signed one")
 	}
 }
 
 func TestVaultCAEmptyServerName(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	srv := mockVaultServer(t, pki, nil)
-
-	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+	v, err := NewVaultCA(context.Background(), newVaultCAConfig(), zerolog.Nop())
 	if err != nil {
 		t.Fatalf("NewVaultCA failed: %v", err)
 	}
@@ -218,95 +276,15 @@ func TestVaultCAEmptyServerName(t *testing.T) {
 	}
 }
 
-// mockVaultSignOpts configures the behaviour of the sign endpoint in
-// mockVaultServerWithOpts.
-type mockVaultSignOpts struct {
-	// forceError makes the sign endpoint respond with an HTTP 500.
-	forceError bool
-	// useCaChain makes the sign endpoint return the issuer in the ca_chain
-	// JSON array instead of the issuing_ca string field.
-	useCaChain bool
-}
-
-// mockVaultServerWithOpts is like mockVaultServer but accepts additional
-// options that control sign-endpoint behaviour. The existing mockVaultServer
-// wrapper continues to call this with zero-value opts so all existing tests
-// remain unchanged.
-func mockVaultServerWithOpts(t *testing.T, pki *testVaultPKI, signCount *int, opts mockVaultSignOpts) *httptest.Server {
-	t.Helper()
-	var mu sync.Mutex
-
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/v1/auth/approle/login", func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"auth": map[string]interface{}{
-				"client_token":   "test-token",
-				"lease_duration": 3600,
-				"renewable":      true,
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc("/v1/pki/sign/kproxy", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		if signCount != nil {
-			*signCount++
-		}
-		mu.Unlock()
-
-		if opts.forceError {
-			http.Error(w, `{"errors":["internal server error"]}`, http.StatusInternalServerError)
-			return
-		}
-
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]interface{}
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		csrPEM, _ := req["csr"].(string)
-		leafPEM := pki.sign(t, csrPEM)
-
-		var data map[string]interface{}
-		if opts.useCaChain {
-			data = map[string]interface{}{
-				"certificate": leafPEM,
-				"ca_chain":    []string{string(pki.certPEM)},
-			}
-		} else {
-			data = map[string]interface{}{
-				"certificate": leafPEM,
-				"issuing_ca":  string(pki.certPEM),
-			}
-		}
-
-		resp := map[string]interface{}{"data": data}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc("/v1/pki/ca/pem", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/pem-certificate-chain")
-		_, _ = w.Write(pki.certPEM)
-	})
-
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-// TestVaultCASignFailureNoFallback verifies that when the Vault sign endpoint
-// returns an error, GetCertificate propagates the error and does NOT cache
-// anything (i.e. there is no silent fallback to local signing).
+// TestVaultCASignFailureNoFallback verifies that when Vault refuses to sign
+// (here, an unknown PKI role the AppRole token has no access to),
+// GetCertificate propagates the error and caches nothing — there is no silent
+// fallback to local signing.
 func TestVaultCASignFailureNoFallback(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	srv := mockVaultServerWithOpts(t, pki, nil, mockVaultSignOpts{forceError: true})
+	cfg := newVaultCAConfig()
+	cfg.PKIRole = "nonexistent-role"
 
-	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+	v, err := NewVaultCA(context.Background(), cfg, zerolog.Nop())
 	if err != nil {
 		t.Fatalf("NewVaultCA failed: %v", err)
 	}
@@ -314,59 +292,26 @@ func TestVaultCASignFailureNoFallback(t *testing.T) {
 
 	cert, err := v.GetCertificate(&tls.ClientHelloInfo{ServerName: "fail.example.com"})
 	if err == nil {
-		t.Fatal("expected GetCertificate to return an error when sign endpoint fails, got nil")
+		t.Fatal("expected GetCertificate to return an error when signing is refused, got nil")
 	}
 	if cert != nil {
-		t.Errorf("expected nil certificate on sign failure, got non-nil")
+		t.Error("expected nil certificate on sign failure, got non-nil")
 	}
-
-	// Nothing should have been cached for the failed hostname.
 	if size, _ := v.CacheStats(); size != 0 {
 		t.Errorf("expected empty cache after sign failure, got %d entries", size)
 	}
 }
 
-// TestVaultCACaChainBranch verifies that when the Vault sign response carries
-// the issuer in the ca_chain array (the preferred field), the chain-assembly
-// code picks it up and the resulting tls.Certificate has at least two DER
-// entries (leaf + issuer), and that the issuer DER parses as a valid cert.
-func TestVaultCACaChainBranch(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	srv := mockVaultServerWithOpts(t, pki, nil, mockVaultSignOpts{useCaChain: true})
-
-	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
-	if err != nil {
-		t.Fatalf("NewVaultCA failed: %v", err)
-	}
-	defer v.Close()
-
-	cert, err := v.GetCertificate(&tls.ClientHelloInfo{ServerName: "chain.example.com"})
-	if err != nil {
-		t.Fatalf("GetCertificate failed: %v", err)
-	}
-
-	if len(cert.Certificate) < 2 {
-		t.Fatalf("expected at least 2 DER entries (leaf + issuer), got %d", len(cert.Certificate))
-	}
-
-	// The second entry must parse as a valid x509 certificate.
-	issuerDER := cert.Certificate[1]
-	if _, err := x509.ParseCertificate(issuerDER); err != nil {
-		t.Errorf("issuer DER (from ca_chain) does not parse as a valid certificate: %v", err)
-	}
-}
-
+// TestVaultCASecretIDFile verifies the secret_id is sourced from a file (with
+// surrounding whitespace trimmed) and that AppRole login succeeds with it.
 func TestVaultCASecretIDFile(t *testing.T) {
-	pki := newTestVaultPKI(t)
-	srv := mockVaultServer(t, pki, nil)
-
 	dir := t.TempDir()
 	secretIDPath := filepath.Join(dir, "secret-id")
-	if err := os.WriteFile(secretIDPath, []byte("file-secret-id\n"), 0600); err != nil {
+	if err := os.WriteFile(secretIDPath, []byte(vaultSecretID+"\n"), 0600); err != nil {
 		t.Fatalf("failed to write secret id file: %v", err)
 	}
 
-	cfg := testVaultConfig(srv.URL)
+	cfg := newVaultCAConfig()
 	cfg.SecretID = ""
 	cfg.SecretIDFile = secretIDPath
 
@@ -376,12 +321,11 @@ func TestVaultCASecretIDFile(t *testing.T) {
 	}
 	defer v.Close()
 
-	// Verify resolveSecretID trims whitespace and reads from file.
 	got, err := v.resolveSecretID()
 	if err != nil {
 		t.Fatalf("resolveSecretID failed: %v", err)
 	}
-	if got != "file-secret-id" {
-		t.Errorf("expected secret id %q, got %q", "file-secret-id", got)
+	if got != vaultSecretID {
+		t.Errorf("expected secret id %q, got %q", vaultSecretID, got)
 	}
 }
