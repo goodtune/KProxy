@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -82,22 +83,57 @@ func runServer(cmd *cobra.Command, args []string) error {
 		Msg("Storage initialized")
 
 	// Initialize Certificate Authority
-	caConfig := ca.Config{
-		RootCertPath:   cfg.TLS.CACert,
-		RootKeyPath:    cfg.TLS.CAKey,
-		IntermCertPath: cfg.TLS.IntermediateCert,
-		IntermKeyPath:  cfg.TLS.IntermediateKey,
-		CertCacheSize:  cfg.TLS.CertCacheSize,
-		CertCacheTTL:   parseDuration(cfg.TLS.CertCacheTTL, 24*time.Hour),
-		CertValidity:   parseDuration(cfg.TLS.CertValidity, 24*time.Hour),
-	}
+	// caCtx is used by the Vault backend's token renewal goroutine; defer
+	// caCancel ensures the goroutine is signalled on any return path.
+	caCtx, caCancel := context.WithCancel(context.Background())
+	defer caCancel()
 
-	certificateAuthority, err := ca.NewCA(caConfig, logger)
-	if err != nil {
-		return fmt.Errorf("failed to initialize Certificate Authority: %w", err)
+	var certIssuer ca.CertificateIssuer
+	switch cfg.TLS.Backend {
+	case "vault":
+		// Resolve leaf TTL: prefer vault.pki.ttl, fall back to cert_validity.
+		certValidity := parseDuration(cfg.TLS.CertValidity, 24*time.Hour)
+		vaultTTL := certValidity
+		if cfg.TLS.Vault.PKI.TTL != "" {
+			vaultTTL = parseDuration(cfg.TLS.Vault.PKI.TTL, certValidity)
+		}
+		vaultCAConfig := ca.VaultCAConfig{
+			Address:      cfg.TLS.Vault.Address,
+			CACert:       cfg.TLS.Vault.CACert,
+			Namespace:    cfg.TLS.Vault.Namespace,
+			AppRoleMount: cfg.TLS.Vault.AppRole.Mount,
+			RoleID:       cfg.TLS.Vault.AppRole.RoleID,
+			SecretID:     cfg.TLS.Vault.AppRole.SecretID,
+			SecretIDFile: cfg.TLS.Vault.AppRole.SecretIDFile,
+			PKIMount:     cfg.TLS.Vault.PKI.Mount,
+			PKIRole:      cfg.TLS.Vault.PKI.Role,
+			TTL:          vaultTTL,
+			CacheSize:    cfg.TLS.CertCacheSize,
+			CacheTTL:     parseDuration(cfg.TLS.CertCacheTTL, 24*time.Hour),
+		}
+		vaultCA, err := ca.NewVaultCA(caCtx, vaultCAConfig, logger)
+		if err != nil {
+			return fmt.Errorf("failed to initialize Vault certificate backend: %w", err)
+		}
+		certIssuer = vaultCA
+		logger.Info().Str("backend", "vault").Str("address", cfg.TLS.Vault.Address).Msg("Vault certificate backend initialized")
+	default: // "local" or ""
+		caConfig := ca.Config{
+			RootCertPath:   cfg.TLS.CACert,
+			RootKeyPath:    cfg.TLS.CAKey,
+			IntermCertPath: cfg.TLS.IntermediateCert,
+			IntermKeyPath:  cfg.TLS.IntermediateKey,
+			CertCacheSize:  cfg.TLS.CertCacheSize,
+			CertCacheTTL:   parseDuration(cfg.TLS.CertCacheTTL, 24*time.Hour),
+			CertValidity:   parseDuration(cfg.TLS.CertValidity, 24*time.Hour),
+		}
+		localCA, err := ca.NewCA(caConfig, logger)
+		if err != nil {
+			return fmt.Errorf("failed to initialize Certificate Authority: %w", err)
+		}
+		certIssuer = localCA
+		logger.Info().Msg("Certificate Authority initialized")
 	}
-
-	logger.Info().Msg("Certificate Authority initialized")
 
 	// Obtain and load Let's Encrypt certificate if configured
 	var letsEncryptCert *tls.Certificate
@@ -331,7 +367,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	proxyServer := proxy.NewServer(
 		proxyConfig,
 		policyEngine,
-		certificateAuthority,
+		certIssuer,
 		logger,
 	)
 
