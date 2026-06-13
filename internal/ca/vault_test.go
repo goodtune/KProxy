@@ -94,58 +94,11 @@ func (p *testVaultPKI) sign(t *testing.T, csrPEM string) string {
 }
 
 // mockVaultServer wires the three endpoints VaultCA calls.
+// It delegates to mockVaultServerWithOpts with default (zero-value) options so
+// all existing tests continue to work unchanged.
 func mockVaultServer(t *testing.T, pki *testVaultPKI, signCount *int) *httptest.Server {
 	t.Helper()
-	var mu sync.Mutex
-
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/v1/auth/approle/login", func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"auth": map[string]interface{}{
-				"client_token":   "test-token",
-				"lease_duration": 3600,
-				"renewable":      true,
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc("/v1/pki/sign/kproxy", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		if signCount != nil {
-			*signCount++
-		}
-		mu.Unlock()
-
-		body, _ := io.ReadAll(r.Body)
-		var req map[string]interface{}
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		csrPEM, _ := req["csr"].(string)
-		leafPEM := pki.sign(t, csrPEM)
-
-		resp := map[string]interface{}{
-			"data": map[string]interface{}{
-				"certificate": leafPEM,
-				"issuing_ca":  string(pki.certPEM),
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc("/v1/pki/ca/pem", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/pem-certificate-chain")
-		_, _ = w.Write(pki.certPEM)
-	})
-
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
+	return mockVaultServerWithOpts(t, pki, signCount, mockVaultSignOpts{})
 }
 
 func testVaultConfig(addr string) VaultCAConfig {
@@ -262,6 +215,144 @@ func TestVaultCAEmptyServerName(t *testing.T) {
 
 	if _, err := v.GetCertificate(&tls.ClientHelloInfo{ServerName: ""}); err == nil {
 		t.Error("expected error for empty ServerName, got nil")
+	}
+}
+
+// mockVaultSignOpts configures the behaviour of the sign endpoint in
+// mockVaultServerWithOpts.
+type mockVaultSignOpts struct {
+	// forceError makes the sign endpoint respond with an HTTP 500.
+	forceError bool
+	// useCaChain makes the sign endpoint return the issuer in the ca_chain
+	// JSON array instead of the issuing_ca string field.
+	useCaChain bool
+}
+
+// mockVaultServerWithOpts is like mockVaultServer but accepts additional
+// options that control sign-endpoint behaviour. The existing mockVaultServer
+// wrapper continues to call this with zero-value opts so all existing tests
+// remain unchanged.
+func mockVaultServerWithOpts(t *testing.T, pki *testVaultPKI, signCount *int, opts mockVaultSignOpts) *httptest.Server {
+	t.Helper()
+	var mu sync.Mutex
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/v1/auth/approle/login", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"auth": map[string]interface{}{
+				"client_token":   "test-token",
+				"lease_duration": 3600,
+				"renewable":      true,
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	mux.HandleFunc("/v1/pki/sign/kproxy", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if signCount != nil {
+			*signCount++
+		}
+		mu.Unlock()
+
+		if opts.forceError {
+			http.Error(w, `{"errors":["internal server error"]}`, http.StatusInternalServerError)
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]interface{}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		csrPEM, _ := req["csr"].(string)
+		leafPEM := pki.sign(t, csrPEM)
+
+		var data map[string]interface{}
+		if opts.useCaChain {
+			data = map[string]interface{}{
+				"certificate": leafPEM,
+				"ca_chain":    []string{string(pki.certPEM)},
+			}
+		} else {
+			data = map[string]interface{}{
+				"certificate": leafPEM,
+				"issuing_ca":  string(pki.certPEM),
+			}
+		}
+
+		resp := map[string]interface{}{"data": data}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	mux.HandleFunc("/v1/pki/ca/pem", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pem-certificate-chain")
+		_, _ = w.Write(pki.certPEM)
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestVaultCASignFailureNoFallback verifies that when the Vault sign endpoint
+// returns an error, GetCertificate propagates the error and does NOT cache
+// anything (i.e. there is no silent fallback to local signing).
+func TestVaultCASignFailureNoFallback(t *testing.T) {
+	pki := newTestVaultPKI(t)
+	srv := mockVaultServerWithOpts(t, pki, nil, mockVaultSignOpts{forceError: true})
+
+	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+	if err != nil {
+		t.Fatalf("NewVaultCA failed: %v", err)
+	}
+	defer v.Close()
+
+	cert, err := v.GetCertificate(&tls.ClientHelloInfo{ServerName: "fail.example.com"})
+	if err == nil {
+		t.Fatal("expected GetCertificate to return an error when sign endpoint fails, got nil")
+	}
+	if cert != nil {
+		t.Errorf("expected nil certificate on sign failure, got non-nil")
+	}
+
+	// Nothing should have been cached for the failed hostname.
+	if size, _ := v.CacheStats(); size != 0 {
+		t.Errorf("expected empty cache after sign failure, got %d entries", size)
+	}
+}
+
+// TestVaultCACaChainBranch verifies that when the Vault sign response carries
+// the issuer in the ca_chain array (the preferred field), the chain-assembly
+// code picks it up and the resulting tls.Certificate has at least two DER
+// entries (leaf + issuer), and that the issuer DER parses as a valid cert.
+func TestVaultCACaChainBranch(t *testing.T) {
+	pki := newTestVaultPKI(t)
+	srv := mockVaultServerWithOpts(t, pki, nil, mockVaultSignOpts{useCaChain: true})
+
+	v, err := NewVaultCA(context.Background(), testVaultConfig(srv.URL), zerolog.Nop())
+	if err != nil {
+		t.Fatalf("NewVaultCA failed: %v", err)
+	}
+	defer v.Close()
+
+	cert, err := v.GetCertificate(&tls.ClientHelloInfo{ServerName: "chain.example.com"})
+	if err != nil {
+		t.Fatalf("GetCertificate failed: %v", err)
+	}
+
+	if len(cert.Certificate) < 2 {
+		t.Fatalf("expected at least 2 DER entries (leaf + issuer), got %d", len(cert.Certificate))
+	}
+
+	// The second entry must parse as a valid x509 certificate.
+	issuerDER := cert.Certificate[1]
+	if _, err := x509.ParseCertificate(issuerDER); err != nil {
+		t.Errorf("issuer DER (from ca_chain) does not parse as a valid certificate: %v", err)
 	}
 }
 
