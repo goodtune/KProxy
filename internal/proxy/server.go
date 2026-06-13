@@ -35,7 +35,7 @@ type Server struct {
 	httpServer   *http.Server
 	httpsServer  *http.Server
 	policyEngine *policy.Engine
-	ca           *ca.CA
+	ca           ca.CertificateIssuer
 	logger       zerolog.Logger
 	adminDomain  string
 	serverName   string // Server name for client setup (e.g., "local.kproxy")
@@ -62,7 +62,7 @@ type Config struct {
 func NewServer(
 	config Config,
 	policyEngine *policy.Engine,
-	ca *ca.CA,
+	ca ca.CertificateIssuer,
 	logger zerolog.Logger,
 ) *Server {
 	s := &Server{
