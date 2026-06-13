@@ -64,19 +64,45 @@ type DHCPConfig struct {
 
 // TLSConfig defines certificate authority settings
 type TLSConfig struct {
-	CACert           string            `mapstructure:"ca_cert"`
-	CAKey            string            `mapstructure:"ca_key"`
-	IntermediateCert string            `mapstructure:"intermediate_cert"`
-	IntermediateKey  string            `mapstructure:"intermediate_key"`
-	CertCacheSize    int               `mapstructure:"cert_cache_size"`
-	CertCacheTTL     string `mapstructure:"cert_cache_ttl"`
-	CertValidity     string `mapstructure:"cert_validity"`
-	UseLetsEncrypt   bool   `mapstructure:"use_letsencrypt"`
-	LegoEmail        string `mapstructure:"lego_email"`
-	LegoDNSProvider  string `mapstructure:"lego_dns_provider"`
-	LegoCertPath     string `mapstructure:"lego_cert_path"`
-	LegoKeyPath      string `mapstructure:"lego_key_path"`
-	LegoCADirURL     string `mapstructure:"lego_ca_dir_url"`
+	CACert           string      `mapstructure:"ca_cert"`
+	CAKey            string      `mapstructure:"ca_key"`
+	IntermediateCert string      `mapstructure:"intermediate_cert"`
+	IntermediateKey  string      `mapstructure:"intermediate_key"`
+	CertCacheSize    int         `mapstructure:"cert_cache_size"`
+	CertCacheTTL     string      `mapstructure:"cert_cache_ttl"`
+	CertValidity     string      `mapstructure:"cert_validity"`
+	UseLetsEncrypt   bool        `mapstructure:"use_letsencrypt"`
+	LegoEmail        string      `mapstructure:"lego_email"`
+	LegoDNSProvider  string      `mapstructure:"lego_dns_provider"`
+	LegoCertPath     string      `mapstructure:"lego_cert_path"`
+	LegoKeyPath      string      `mapstructure:"lego_key_path"`
+	LegoCADirURL     string      `mapstructure:"lego_ca_dir_url"`
+	Backend          string      `mapstructure:"backend"`
+	Vault            VaultConfig `mapstructure:"vault"`
+}
+
+// VaultConfig defines HashiCorp Vault connection and authentication settings
+type VaultConfig struct {
+	Address   string             `mapstructure:"address"`
+	CACert    string             `mapstructure:"ca_cert"`
+	Namespace string             `mapstructure:"namespace"`
+	AppRole   VaultAppRoleConfig `mapstructure:"approle"`
+	PKI       VaultPKIConfig     `mapstructure:"pki"`
+}
+
+// VaultAppRoleConfig defines Vault AppRole authentication settings
+type VaultAppRoleConfig struct {
+	Mount        string `mapstructure:"mount"`
+	RoleID       string `mapstructure:"role_id"`
+	SecretID     string `mapstructure:"secret_id"`
+	SecretIDFile string `mapstructure:"secret_id_file"`
+}
+
+// VaultPKIConfig defines Vault PKI secrets engine settings
+type VaultPKIConfig struct {
+	Mount string `mapstructure:"mount"`
+	Role  string `mapstructure:"role"`
+	TTL   string `mapstructure:"ttl"`
 }
 
 // StorageConfig defines storage backend settings
@@ -218,6 +244,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tls.lego_cert_path", "/etc/kproxy/certs/letsencrypt.crt")
 	v.SetDefault("tls.lego_key_path", "/etc/kproxy/certs/letsencrypt.key")
 	v.SetDefault("tls.lego_ca_dir_url", "https://acme-v02.api.letsencrypt.org/directory")
+	v.SetDefault("tls.backend", "local")
+	v.SetDefault("tls.vault.approle.mount", "approle")
+	v.SetDefault("tls.vault.pki.mount", "pki")
 
 	// Storage defaults
 	v.SetDefault("storage.type", "redis")
@@ -290,6 +319,24 @@ func validate(cfg *Config) error {
 	}
 	if cfg.Storage.Redis.Port == 0 {
 		return fmt.Errorf("redis port is required")
+	}
+
+	// Validate TLS backend
+	switch cfg.TLS.Backend {
+	case "local", "":
+		// valid; "" treated as equivalent to "local"
+	case "vault":
+		if cfg.TLS.Vault.Address == "" {
+			return fmt.Errorf("tls.vault.address is required when tls.backend is \"vault\"")
+		}
+		if cfg.TLS.Vault.AppRole.RoleID == "" {
+			return fmt.Errorf("tls.vault.approle.role_id is required when tls.backend is \"vault\"")
+		}
+		if cfg.TLS.Vault.PKI.Role == "" {
+			return fmt.Errorf("tls.vault.pki.role is required when tls.backend is \"vault\"")
+		}
+	default:
+		return fmt.Errorf("unsupported tls.backend %q: must be \"local\" or \"vault\"", cfg.TLS.Backend)
 	}
 
 	return nil

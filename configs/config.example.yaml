@@ -81,18 +81,58 @@ dhcp:
   #   - Local image: "http://192.168.1.1:8080/boot/kiosk.iso"
 
 tls:
-  # CA certificate and key paths
+  # Certificate backend: "local" (default) or "vault"
+  #
+  # "local" - KProxy generates and signs leaf certificates itself using the
+  #           CA keypair defined below (ca_cert/ca_key/intermediate_*).
+  #           Suitable for home use; CA keys are stored on this machine.
+  #
+  # "vault" - KProxy generates leaf private keys locally, submits CSRs to
+  #           HashiCorp Vault's PKI secrets engine for signing, and assembles
+  #           the resulting certificate pairs.  CA private keys never leave Vault.
+  #           When backend is "vault", the ca_cert/ca_key/intermediate_* paths
+  #           below are ignored.  See docs/vault-setup.md for one-time Vault setup.
+  #
+  # cert_cache_size, cert_cache_ttl, and cert_validity apply to BOTH backends.
+  backend: "local"
+
+  # CA certificate and key paths (local backend only)
   ca_cert: "/etc/kproxy/ca/root-ca.crt"
   ca_key: "/etc/kproxy/ca/root-ca.key"
 
-  # Intermediate CA (for signing)
+  # Intermediate CA (for signing, local backend only)
   intermediate_cert: "/etc/kproxy/ca/intermediate-ca.crt"
   intermediate_key: "/etc/kproxy/ca/intermediate-ca.key"
 
-  # Certificate cache settings
+  # Certificate cache settings (apply to both backends)
   cert_cache_size: 1000
   cert_cache_ttl: "24h"
   cert_validity: "24h"
+
+  # HashiCorp Vault PKI backend (used when backend: "vault")
+  # See docs/vault-setup.md for the one-time Vault server setup steps.
+  #
+  # Uncomment and populate the vault: block, then set backend: "vault" above.
+  #
+  # vault:
+  #   address: "https://vault.home.local:8200"   # Vault server URL
+  #   ca_cert: "/etc/kproxy/vault-ca.crt"        # Vault server's own TLS CA cert (optional;
+  #                                               #   omit if Vault's cert is publicly trusted)
+  #   namespace: ""                               # Vault Enterprise namespace (leave blank for OSS)
+  #
+  #   approle:
+  #     mount: "approle"                          # Auth mount path (default "approle")
+  #     role_id: "<role-id>"                      # Non-secret; copy from `vault read auth/approle/role/kproxy/role-id`
+  #     secret_id: ""                             # Inline secret_id — simpler for dev/testing
+  #     secret_id_file: "/etc/kproxy/vault-secret-id"  # Preferred: file path, chmod 600
+  #                                               # (supports rotation without editing config;
+  #                                               #  KProxy re-reads the file on each re-login)
+  #
+  #   pki:
+  #     mount: "pki"                              # PKI secrets engine mount (default "pki")
+  #     role: "kproxy"                            # Vault PKI role name (created in vault-setup.md)
+  #     ttl: "24h"                                # Leaf cert TTL (must be <= role max_ttl);
+  #                                               # defaults to tls.cert_validity if unset
 
   # Let's Encrypt integration (OPTIONAL - for trusted certificates on server.name)
   # By default, certificates are generated on-the-fly using the internal CA
